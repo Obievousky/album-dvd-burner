@@ -3,11 +3,22 @@ from __future__ import annotations
 import shutil
 import tempfile
 from pathlib import Path
+from datetime import datetime
 
 from fastapi import BackgroundTasks
 from fastapi.responses import FileResponse, Response
 
 from ..jobs import Job
+
+
+def _format_seconds(seconds: int) -> str:
+    if seconds < 60:
+        return f"{seconds}s"
+    minutes, sec = divmod(seconds, 60)
+    if minutes < 60:
+        return f"{minutes}m {sec}s"
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours}h {minutes}m {sec}s"
 
 
 def format_job_log(job: Job) -> str:
@@ -26,6 +37,19 @@ def format_job_log(job: Job) -> str:
     lines.extend(f"{log.timestamp} [{log.stage}] {log.message}" for log in job.logs)
     if job.error:
         lines.append(f"[error] {job.error}")
+
+    # If we have start and finish timestamps, append total duration
+    try:
+        if job.started_at and job.finished_at:
+            started = datetime.fromisoformat(job.started_at)
+            finished = datetime.fromisoformat(job.finished_at)
+            total_seconds = int((finished - started).total_seconds())
+            lines.append("")
+            lines.append(f"Total time: { _format_seconds(total_seconds) } ({total_seconds}s)")
+    except Exception:
+        # Do not fail logging if timestamp parsing fails
+        pass
+
     return "\n".join(lines) + "\n"
 
 
