@@ -1,0 +1,221 @@
+import shutil
+import xml.etree.ElementTree as ET
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
+from pathlib import Path
+
+from .artwork import prepare_artwork
+from .audio import AudioInfo, prepare_album_audio
+from .progress import ProgressTracker
+from .utils import run
+
+
+@dataclass
+class AlbumTitle:
+    name: str
+    source_folder: Path
+    work_dir: Path
+    tracks: list[Path]
+    artwork: Path
+    audio_info: AudioInfo
+
+
+def prepare_album(workspace: Path, tracker: ProgressTracker | None = None) -> AlbumTitle:
+    if tracker:
+        tracker.log("preparing", f"Scanning album: {workspace.name}")
+
+    work_dir, tracks, info = prepare_album_audio(workspace, tracker)
+
+    if tracker:
+        tracker.log("preparing", f"Preparing artwork for {workspace.name}")
+
+    artwork = prepare_artwork(workspace)
+
+    if tracker:
+        tracker.log("preparing", f"Artwork ready: {artwork.name}")
+
+    return AlbumTitle(
+        name=workspace.name,
+        source_folder=workspace,
+        work_dir=work_dir,
+        tracks=tracks,
+        artwork=artwork,
+        audio_info=info,
+    )
+
+
+def _ffmpeg_target(standard: str) -> str:
+    return "ntsc-dvd" if standard == "ntsc" else "pal-dvd"
+
+
+def _create_track_vob(
+    track: Path,
+    artwork: Path,
+    vob_path: Path,
+    *,
+    standard: str,
+) -> None:
+    vob_path.parent.mkdir(parents=True, exist_ok=True)
+    run(
+        [
+            "ffmpeg",
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-loop",
+            "1",
+            "-i",
+            str(artwork),
+            "-i",
+            str(track),
+            "-c:v",
+            "mpeg2video",
+            "-q:v",
+            "4",
+            "-threads",
+            "2",
+            "-c:a",
+            "pcm_s16be",
+            "-f",
+            "vob",
+            "-target",
+            _ffmpeg_target(standard),
+            "-shortest",
+            str(vob_path),
+        ]
+    )
+
+
+def _build_dvdauthor_xml(albums: list[AlbumTitle], vob_map: dict[Path, str], standard: str) -> str:
+    root = ET.Element("dvdauthor", dest=".")
+    for album in albums:
+        titleset = ET.SubElement(root, "titleset")
+        titles = ET.SubElement(titleset, "titles")
+        ET.SubElement(titles, "video", format=standard, aspect="4:3")
+        pgc = ET.SubElement(titles, "pgc")
+        for track in album.tracks:
+            ET.SubElement(pgc, "vob", file=vob_map[track])
+
+    return '<?xml version="1.0" encoding="utf-8"?>\n' + ET.tostring(root, encoding="unicode")
+
+
+def _encode_vob_task(
+    album_index: int,
+    track_index: int,
+    album: AlbumTitle,
+    track: Path,
+    work_root: Path,
+    standard: str,
+) -> tuple[Path, str]:
+    vob_name = f"title{album_index:02d}_track{track_index:02d}.vob"
+    vob_path = work_root / vob_name
+    _create_track_vob(track, album.artwork, vob_path, standard=standard)
+    return track, vob_name
+
+
+def author_dvd(
+    albums: list[AlbumTitle],
+    output_dir: Path,
+    *,
+    standard: str = "ntsc",
+    work_root: Path | None = None,
+    tracker: ProgressTracker | None = None,
+) -> Path:
+    if not albums:
+        raise ValueError("At least one album folder is required")
+
+    work_root = work_root or (output_dir.parent / ".dvd_work")
+    if work_root.exists():
+        shutil.rmtree(work_root)
+    work_root.mkdir(parents=True, exist_ok=True)
+
+    try:
+        total_tracks = sum(len(album.tracks) for album in albums)
+        vob_map: dict[Path, str] = {}
+        completed = 0
+
+        if tracker:
+            tracker.log(
+                "authoring",
+                f"Encoding {total_tracks} track(s) to DVD VOB (parallel, this may take several minutes)...",
+            )
+
+        tasks = []
+        for album_index, album in enumerate(albums, start=1):
+            for track_index, track in enumerate(album.tracks, start=1):
+                tasks.append((album_index, track_index, album, track))
+
+        max_workers = min(4, max(1, len(tasks)))
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            futures = {
+                pool.submit(
+                    _encode_vob_task,
+                    album_index,
+                    track_index,
+                    album,
+                    track,
+                    work_root,
+                    standard,
+                ): (album, track, album_index, track_index)
+                for album_index, track_index, album, track in tasks
+            }
+
+            for future in as_completed(futures):
+                album, track, album_index, track_index = futures[future]
+                track_path, vob_name = future.result()
+                vob_map[track_path] = vob_name
+                completed += 1
+                if tracker:
+                    tracker.advance(
+                        "authoring",
+                        f"[{completed}/{total_tracks}] VOB ready — title {album_index}, "
+                        f"track {track_index}: {album.name} / {track.name}",
+                    )
+
+        if tracker:
+            tracker.log("authoring", "Building DVD structure with dvdauthor...")
+
+        xml_path = work_root / "dvdauthor.xml"
+        xml_path.write_text(_build_dvdauthor_xml(albums, vob_map, standard), encoding="utf-8")
+
+        if output_dir.exists():
+            shutil.rmtree(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        run(["dvdauthor", "-o", str(output_dir), "-x", str(xml_path)], cwd=work_root)
+        if tracker:
+            tracker.advance("authoring", "DVD structure built (VIDEO_TS)")
+
+        # Basic verification: ensure VIDEO_TS exists and contains IFO files before creating ISO
+        video_ts = output_dir / "VIDEO_TS"
+        if not video_ts.is_dir() or not any(video_ts.glob("*.IFO")):
+            files_list = '\n'.join(sorted(str(p.relative_to(output_dir)) for p in output_dir.rglob('*')))
+            raise RuntimeError(
+                "dvdauthor did not produce a valid VIDEO_TS directory. "
+                "genisoimage requires a VIDEO_TS folder with .IFO files. "
+                "Check previous 'authoring' logs for errors.\n"
+                f"Output directory contents:\n{files_list}"
+            )
+
+        if tracker:
+            tracker.log("authoring", "Creating disc ISO with genisoimage...")
+
+        iso_path = output_dir / "disc.iso"
+        run(
+            [
+                "genisoimage",
+                "-o",
+                str(iso_path),
+                "-dvd-video",
+                str(output_dir),
+            ]
+        )
+
+        if tracker:
+            size_mb = iso_path.stat().st_size / (1024 * 1024)
+            tracker.advance("authoring", f"ISO created ({size_mb:.1f} MB): {iso_path}")
+
+        return iso_path
+    finally:
+        shutil.rmtree(work_root, ignore_errors=True)
