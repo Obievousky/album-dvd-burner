@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=69.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "album-dvd-burner"
+version = "0.3.0"
+description = "Convert albums to Lplex-style audio DVDs, log burns to PostgreSQL, and burn discs"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "psycopg2-binary>=2.9.9",
+    "Pillow>=10.4.0",
+    "click>=8.1.7",
+    "python-dotenv>=1.0.1",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "python-multipart>=0.0.12",
+]
+
+[project.scripts]
+album-dvd-burner = "album_dvd_burner.main:cli"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[tool.setuptools.package-data]
+"album_dvd_burner.web" = ["static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

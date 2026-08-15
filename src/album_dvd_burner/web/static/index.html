@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Album DVD Burner</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>Album DVD Burner</h1>
+      <p class="subtitle">Per-album workspaces · Lplex-style DVDs · PostgreSQL catalog</p>
+    </div>
+    <div class="status-pill" id="drive-status">Checking drive…</div>
+  </header>
+
+  <div id="api-banner" class="api-banner hidden" role="alert"></div>
+
+  <main class="layout">
+    <section class="panel">
+      <div class="panel-header">
+        <h2>Albums</h2>
+        <button class="btn ghost" id="refresh-albums">Refresh</button>
+      </div>
+
+      <div class="upload-box">
+        <h3>Upload album</h3>
+        <p class="hint">Name is read from audio tags (<code>album</code> + <code>artist</code>). Override only if needed.</p>
+        <div class="upload-row">
+          <input type="text" id="album-name" placeholder="Optional name override" />
+          <label class="btn">
+            Folder
+            <input type="file" id="folder-upload" webkitdirectory directory multiple hidden />
+          </label>
+          <label class="btn">
+            ZIP
+            <input type="file" id="zip-upload" accept=".zip" hidden />
+          </label>
+        </div>
+        <div class="progress-block hidden" id="upload-progress-block">
+          <div class="progress-label"><span id="upload-progress-label">Uploading…</span><span id="upload-progress-percent">0%</span></div>
+          <div class="progress-bar"><div class="progress-fill" id="upload-progress-fill"></div></div>
+        </div>
+      </div>
+
+      <div id="album-list" class="album-list"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <h2>Create DVD</h2>
+        <span class="burn-code" id="next-burn-code">—</span>
+      </div>
+
+      <form id="job-form" class="job-form">
+        <label class="field">
+          <span>DVD standard</span>
+          <select id="standard">
+            <option value="ntsc">NTSC (720×480)</option>
+            <option value="pal">PAL</option>
+          </select>
+        </label>
+
+        <label class="checkbox">
+          <input type="checkbox" id="burn-disc" checked />
+          Burn disc after authoring
+        </label>
+
+        <fieldset class="retention-box">
+          <legend>File retention</legend>
+          <label class="checkbox">
+            <input type="checkbox" id="persistent" checked />
+            Keep files after job
+          </label>
+
+          <div id="retention-options" class="retention-options">
+            <label class="checkbox"><input type="checkbox" id="keep-source" checked /> Source audio &amp; cover</label>
+            <label class="checkbox"><input type="checkbox" id="keep-converted" /> Converted WAV (16/48)</label>
+            <label class="checkbox"><input type="checkbox" id="keep-artwork" checked /> Processed artwork</label>
+            <label class="checkbox"><input type="checkbox" id="keep-iso" checked /> ISO image</label>
+            <label class="checkbox"><input type="checkbox" id="keep-video-ts" /> VIDEO_TS folder</label>
+          </div>
+          <p class="hint" id="retention-delay-hint">Unchecked files are deleted after the grace period (default 3h).</p>
+        </fieldset>
+
+        <button type="submit" class="btn primary" id="start-job">Start job</button>
+      </form>
+
+      <div class="progress-block hidden" id="job-progress-block">
+        <div class="progress-label"><span id="job-progress-label">Authoring…</span><span id="job-progress-percent">0%</span></div>
+        <div class="progress-bar"><div class="progress-fill" id="job-progress-fill"></div></div>
+      </div>
+
+      <div class="job-log">
+        <div class="job-log-header">
+          <h3>Job log</h3>
+          <div class="job-actions hidden" id="job-actions">
+            <a class="btn ghost hidden" id="download-log" href="#">Download log</a>
+          </div>
+        </div>
+        <div class="download-list hidden" id="job-downloads"></div>
+        <pre id="job-log-output">No active job.</pre>
+      </div>
+    </section>
+
+    <section class="panel full-width">
+      <div class="panel-header">
+        <h2>Burn history</h2>
+        <button class="btn ghost" id="refresh-burns">Refresh</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Burn ID</th>
+              <th>Albums</th>
+              <th>Created</th>
+              <th>Burned</th>
+              <th>Output</th>
+            </tr>
+          </thead>
+          <tbody id="burn-history"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
