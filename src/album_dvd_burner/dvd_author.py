@@ -78,6 +78,26 @@ def _create_track_vob(
         else:
             target_codec = "pcm_s16be"
 
+    # Determine display aspect and sample aspect ratio to avoid dvdauthor warnings
+    # Default to 4:3 display aspect; this can be adjusted to 16:9 later if needed.
+    display_aspect = "4:3"
+    if standard == "ntsc":
+        # NTSC DVD resolution is 720x480
+        width, height = 720, 480
+        if display_aspect == "4:3":
+            sar = "8/9"
+        else:
+            sar = "32/27"
+    else:
+        # PAL DVD resolution is 720x576
+        width, height = 720, 576
+        if display_aspect == "4:3":
+            sar = "8/7"
+        else:
+            sar = "64/45"
+
+    vf = f"scale={width}:{height},setsar={sar}"
+
     # Build ffmpeg command using soxr resampler and preserve bit depth when possible
     cmd = [
         "ffmpeg",
@@ -98,6 +118,9 @@ def _create_track_vob(
         # Let ffmpeg choose threads optimally
         "-threads",
         "0",
+        # Ensure video dimensions and pixel aspect ratio are explicit to satisfy dvdauthor
+        "-vf",
+        vf,
         # audio: use soxr resampler for highest quality
         "-af",
         "aresample=resampler=soxr",
