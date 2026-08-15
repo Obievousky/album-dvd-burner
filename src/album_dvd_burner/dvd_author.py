@@ -78,9 +78,22 @@ def _create_track_vob(
         else:
             target_codec = "pcm_s16be"
 
-    # Determine display aspect and sample aspect ratio to avoid dvdauthor warnings
-    # Default to 4:3 display aspect; this can be adjusted to 16:9 later if needed.
+    # Determine display aspect from artwork dimensions to avoid dvdauthor warnings.
+    # Auto-detect between 4:3 and 16:9 based on artwork aspect ratio; fallback to 4:3.
     display_aspect = "4:3"
+    try:
+        from PIL import Image
+
+        with Image.open(artwork) as img:
+            w, h = img.size
+            ratio = float(w) / float(h) if h else 0.0
+            # Choose threshold halfway between 4:3 (~1.333) and 16:9 (~1.777)
+            threshold = (4.0 / 3.0 + 16.0 / 9.0) / 2.0  # ~1.555
+            display_aspect = "16:9" if ratio >= threshold else "4:3"
+    except Exception:
+        # If PIL is not available or reading fails, default to 4:3
+        display_aspect = "4:3"
+
     if standard == "ntsc":
         # NTSC DVD resolution is 720x480
         width, height = 720, 480
