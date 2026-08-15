@@ -55,37 +55,65 @@ def _create_track_vob(
     vob_path: Path,
     *,
     standard: str,
+    album_audio_info: AudioInfo | None = None,
 ) -> None:
+    """Create a VOB for a single track.
+
+    Preserve highest reasonable audio quality: if the album audio is 24-bit (or higher)
+    encode audio as 24-bit PCM; otherwise use 16-bit. Use soxr resampler for best quality.
+    """
     vob_path.parent.mkdir(parents=True, exist_ok=True)
-    run(
-        [
-            "ffmpeg",
-            "-y",
-            "-hide_banner",
-            "-loglevel",
-            "error",
-            "-loop",
-            "1",
-            "-i",
-            str(artwork),
-            "-i",
-            str(track),
-            "-c:v",
-            "mpeg2video",
-            "-q:v",
-            "4",
-            "-threads",
-            "2",
-            "-c:a",
-            "pcm_s16be",
-            "-f",
-            "vob",
-            "-target",
-            _ffmpeg_target(standard),
-            "-shortest",
-            str(vob_path),
-        ]
-    )
+
+    # Decide target audio codec and sample rate
+    target_samplerate = 48000
+    target_codec = "pcm_s16be"
+    if album_audio_info is not None:
+        if album_audio_info.sample_rate == 96000:
+            target_samplerate = 96000
+        else:
+            # For DVD we target 48 kHz (we convert 44.1 -> 48 earlier in pipeline)
+            target_samplerate = 48000
+        if album_audio_info.bit_depth >= 24:
+            target_codec = "pcm_s24be"
+        else:
+            target_codec = "pcm_s16be"
+
+    # Build ffmpeg command using soxr resampler and preserve bit depth when possible
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-loop",
+        "1",
+        "-i",
+        str(artwork),
+        "-i",
+        str(track),
+        "-c:v",
+        "mpeg2video",
+        "-q:v",
+        "4",
+        # Let ffmpeg choose threads optimally
+        "-threads",
+        "0",
+        # audio: use soxr resampler for highest quality
+        "-af",
+        "aresample=resampler=soxr",
+        "-ar",
+        str(target_samplerate),
+        "-c:a",
+        target_codec,
+        "-f",
+        "vob",
+        "-target",
+        _ffmpeg_target(standard),
+        "-shortest",
+        str(vob_path),
+    ]
+
+    run(cmd)
 
 
 def _build_dvdauthor_xml(albums: list[AlbumTitle], vob_map: dict[Path, str], standard: str) -> str:
