@@ -4,6 +4,7 @@ import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
+import os
 
 from .artwork import prepare_artwork
 from .audio import AudioInfo, prepare_album_audio
@@ -141,10 +142,10 @@ def _create_track_vob(
         str(target_samplerate),
         "-c:a",
         target_codec,
+        # Explicitly set container format to vob and avoid -target preset which may force AC3
         "-f",
         "vob",
-        "-target",
-        _ffmpeg_target(standard),
+        # Do not use -target (preset) because it can override explicit audio codec settings.
         "-shortest",
         str(vob_path),
     ]
@@ -285,6 +286,30 @@ def author_dvd(
                 f"Output directory contents:\n{files_list}"
             )
 
+        # Ensure permissions are readable by the user that may run genisoimage.
+        # If files are created as root (e.g., inside container), tools running as non-root may fail to read them.
+        def _ensure_readable(root: Path) -> None:
+            try:
+                for p in root.rglob('*'):
+                    try:
+                        if p.is_dir():
+                            # drwxr-xr-x
+                            p.chmod(0o755)
+                        else:
+                            # -rw-r--r--
+                            p.chmod(0o644)
+                    except Exception:
+                        # Best-effort; swallow individual chmod errors
+                        pass
+            except Exception:
+                pass
+
+        try:
+            _ensure_readable(output_dir)
+        except Exception:
+            # Non-fatal
+            pass
+
         if tracker:
             tracker.log("authoring", "Creating disc ISO with genisoimage...")
 
@@ -307,19 +332,35 @@ def author_dvd(
                 tracker.advance("authoring", f"Warning: failed to create VIDEO_TS.IFO: {exc}")
 
         iso_path = output_dir / "disc.iso"
-        # Try genisoimage without -input-charset for maximum compatibility
+        iso_tmp_path = output_dir.parent / f"{output_dir.name}.tmp.iso"
+        if iso_tmp_path.exists():
+            iso_tmp_path.unlink()
+
+        # Important: do not generate the ISO inside the directory being scanned.
+        # genisoimage may recurse into the target file or self-reference the output tree.
         proc_iso = subprocess.run(
             [
                 "genisoimage",
                 "-o",
-                str(iso_path),
+                str(iso_tmp_path),
                 "-dvd-video",
-                str(output_dir),
+                ".",
             ],
             cwd=output_dir,
             capture_output=True,
             text=True,
         )
+
+        if proc_iso.returncode == 0 and iso_tmp_path.exists():
+            if iso_path.exists():
+                iso_path.unlink()
+            shutil.move(str(iso_tmp_path), str(iso_path))
+            try:
+                # Ensure ISO is readable by non-root users
+                iso_path.chmod(0o644)
+                _ensure_readable(output_dir)
+            except Exception:
+                pass
 
         if tracker:
             if proc_iso.stdout:
