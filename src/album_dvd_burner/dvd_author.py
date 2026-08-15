@@ -189,7 +189,14 @@ def author_dvd(
 
         # Basic verification: ensure VIDEO_TS exists and contains IFO files before creating ISO
         video_ts = output_dir / "VIDEO_TS"
-        if not video_ts.is_dir() or not any(video_ts.glob("*.IFO")):
+        # Check for .IFO files case-insensitively
+        has_ifo = False
+        if video_ts.is_dir():
+            for p in video_ts.iterdir():
+                if p.is_file() and p.suffix.lower() == ".ifo":
+                    has_ifo = True
+                    break
+        if not video_ts.is_dir() or not has_ifo:
             files_list = '\n'.join(sorted(str(p.relative_to(output_dir)) for p in output_dir.rglob('*')))
             raise RuntimeError(
                 "dvdauthor did not produce a valid VIDEO_TS directory. "

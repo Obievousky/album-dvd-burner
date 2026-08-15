@@ -532,7 +532,13 @@ async function uploadZip(file) {
   document.getElementById("album-name").value = "";
   showBanner(`Saved as: ${result.name} (${result.naming_source || "detected"})`, "success");
   setTimeout(hideBanner, 5000);
-  await refreshAlbums();
+  // Insert uploaded album into UI immediately for a more seamless experience
+  // Remove any existing entry with the same name then add to the front
+  state.albums = state.albums.filter((a) => a.name !== result.name);
+  state.albums.unshift(result);
+  renderAlbums();
+  // Also refresh in background to pick up any other changes
+  refreshAlbums().catch(() => {});
 }
 
 async function uploadFolder(files) {
@@ -548,7 +554,11 @@ async function uploadFolder(files) {
   document.getElementById("album-name").value = "";
   showBanner(`Saved as: ${result.name} (${result.naming_source || "detected"})`, "success");
   setTimeout(hideBanner, 5000);
-  await refreshAlbums();
+  // Insert uploaded album into UI immediately
+  state.albums = state.albums.filter((a) => a.name !== result.name);
+  state.albums.unshift(result);
+  renderAlbums();
+  refreshAlbums().catch(() => {});
 }
 
 async function deleteAlbum(name) {
