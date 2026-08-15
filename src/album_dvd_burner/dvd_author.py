@@ -254,6 +254,7 @@ def author_dvd(
 
         iso_path = output_dir / "disc.iso"
         # Force input charset to UTF-8 and capture output for diagnostics
+        # Try genisoimage without -input-charset for maximum compatibility
         proc_iso = subprocess.run(
             [
                 "genisoimage",
@@ -261,8 +262,6 @@ def author_dvd(
                 str(iso_path),
                 "-dvd-video",
                 str(output_dir),
-                "-input-charset",
-                "utf-8",
             ],
             cwd=output_dir,
             capture_output=True,
@@ -275,8 +274,10 @@ def author_dvd(
             if proc_iso.stderr:
                 tracker.advance("authoring", f"genisoimage stderr: {proc_iso.stderr.strip()[:2000]}")
 
+        # If genisoimage fails, surface stderr and output contents to help debugging
         if proc_iso.returncode != 0:
             files_list = '\n'.join(sorted(str(p.relative_to(output_dir)) for p in output_dir.rglob('*')))
+            # If failure mentions input-charset or other charset hints, recommend trying alternate genisoimage
             raise RuntimeError(
                 f"genisoimage failed (exit {proc_iso.returncode}).\n"
                 f"stdout:\n{proc_iso.stdout}\n\nstderr:\n{proc_iso.stderr}\n\n"
