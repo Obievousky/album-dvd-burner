@@ -288,8 +288,25 @@ def author_dvd(
         if tracker:
             tracker.log("authoring", "Creating disc ISO with genisoimage...")
 
+        # Ensure VIDEO_TS contains a VIDEO_TS.IFO (VMG). Some dvdauthor setups produce only VTS_01_0.IFO.
+        vts0 = video_ts / "VTS_01_0.IFO"
+        vmg = video_ts / "VIDEO_TS.IFO"
+        bup0 = video_ts / "VTS_01_0.BUP"
+        vmg_bup = video_ts / "VIDEO_TS.BUP"
+        try:
+            if not vmg.exists() and vts0.exists():
+                # Copy VTS_01_0.IFO -> VIDEO_TS.IFO and same for BUP to satisfy genisoimage
+                shutil.copy2(vts0, vmg)
+                if bup0.exists():
+                    shutil.copy2(bup0, vmg_bup)
+                if tracker:
+                    tracker.advance("authoring", "Created VIDEO_TS.IFO/VIDEO_TS.BUP from VTS_01_0 files for compatibility")
+        except Exception as exc:
+            # non-fatal — continue to run genisoimage and let it fail with diagnostics if needed
+            if tracker:
+                tracker.advance("authoring", f"Warning: failed to create VIDEO_TS.IFO: {exc}")
+
         iso_path = output_dir / "disc.iso"
-        # Force input charset to UTF-8 and capture output for diagnostics
         # Try genisoimage without -input-charset for maximum compatibility
         proc_iso = subprocess.run(
             [
