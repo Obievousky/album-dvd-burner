@@ -1,4 +1,5 @@
 import shutil
+import subprocess
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
@@ -7,7 +8,7 @@ from pathlib import Path
 from .artwork import prepare_artwork
 from .audio import AudioInfo, prepare_album_audio
 from .progress import ProgressTracker
-from .utils import run
+from .utils import run, run_capture
 
 
 @dataclass
@@ -183,7 +184,22 @@ def author_dvd(
             shutil.rmtree(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        run(["dvdauthor", "-o", str(output_dir), "-x", str(xml_path)], cwd=work_root)
+        # Run dvdauthor while capturing stdout/stderr for diagnostics
+        proc = subprocess.run(["dvdauthor", "-o", str(output_dir), "-x", str(xml_path)], cwd=work_root, capture_output=True, text=True)
+        if tracker:
+            tracker.advance("authoring", "dvdauthor finished")
+            if proc.stdout:
+                tracker.advance("authoring", f"dvdauthor stdout: {proc.stdout.strip()[:2000]}")
+            if proc.stderr:
+                tracker.advance("authoring", f"dvdauthor stderr: {proc.stderr.strip()[:2000]}")
+        if proc.returncode != 0:
+            files_list = '\n'.join(sorted(str(p.relative_to(output_dir)) for p in output_dir.rglob('*')))
+            raise RuntimeError(
+                f"dvdauthor failed (exit {proc.returncode}).\n"
+                f"stdout:\n{proc.stdout}\n\nstderr:\n{proc.stderr}\n\n"
+                f"Output directory contents:\n{files_list}"
+            )
+
         if tracker:
             tracker.advance("authoring", "DVD structure built (VIDEO_TS)")
 
@@ -209,15 +225,35 @@ def author_dvd(
             tracker.log("authoring", "Creating disc ISO with genisoimage...")
 
         iso_path = output_dir / "disc.iso"
-        run(
+        # Force input charset to UTF-8 and capture output for diagnostics
+        proc_iso = subprocess.run(
             [
                 "genisoimage",
                 "-o",
                 str(iso_path),
                 "-dvd-video",
                 str(output_dir),
-            ]
+                "-input-charset",
+                "utf-8",
+            ],
+            cwd=output_dir,
+            capture_output=True,
+            text=True,
         )
+
+        if tracker:
+            if proc_iso.stdout:
+                tracker.advance("authoring", f"genisoimage stdout: {proc_iso.stdout.strip()[:2000]}")
+            if proc_iso.stderr:
+                tracker.advance("authoring", f"genisoimage stderr: {proc_iso.stderr.strip()[:2000]}")
+
+        if proc_iso.returncode != 0:
+            files_list = '\n'.join(sorted(str(p.relative_to(output_dir)) for p in output_dir.rglob('*')))
+            raise RuntimeError(
+                f"genisoimage failed (exit {proc_iso.returncode}).\n"
+                f"stdout:\n{proc_iso.stdout}\n\nstderr:\n{proc_iso.stderr}\n\n"
+                f"Output directory contents:\n{files_list}"
+            )
 
         if tracker:
             size_mb = iso_path.stat().st_size / (1024 * 1024)
