@@ -139,7 +139,7 @@ def _encode_vob_task(
 ) -> tuple[Path, str]:
     vob_name = f"title{album_index:02d}_track{track_index:02d}.vob"
     vob_path = work_root / vob_name
-    _create_track_vob(track, album.artwork, vob_path, standard=standard)
+    _create_track_vob(track, album.artwork, vob_path, standard=standard, album_audio_info=album.audio_info)
     return track, vob_name
 
 
