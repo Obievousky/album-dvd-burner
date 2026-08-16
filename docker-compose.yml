@@ -23,6 +23,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    # Run container as the host user by default; override LOCAL_UID/LOCAL_GID when starting
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
@@ -40,7 +42,10 @@ services:
       - ${DATA_ROOT:-./data}:/data
     devices:
       - "${DVD_DEVICE:-/dev/sr0}:${DVD_DEVICE:-/dev/sr0}"
-    privileged: true
+    # Prefer granting minimal capabilities instead of full privileged mode
+    privileged: false
+    cap_add:
+      - SYS_RAWIO
     restart: unless-stopped
 
 volumes:
