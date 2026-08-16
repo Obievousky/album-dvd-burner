@@ -1,8 +1,0 @@
-- Making like a charging bar for upload
-- Make a bar for authorizing
-- Takes a lot of time to authorize
-- In general, more detailed log
-- Not make a subfolder for 48khz inside 16bit, make a 16/48 folder
-
-Future
-- cover art by the side of listing
