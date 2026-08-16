@@ -44,8 +44,11 @@ services:
       - "${DVD_DEVICE:-/dev/sr0}:${DVD_DEVICE:-/dev/sr0}"
     # Prefer granting minimal capabilities instead of full privileged mode
     privileged: false
-    cap_add:
-      - SYS_RAWIO
+    # Optional capability: SYS_RAWIO allows low-level raw IO (ioctl) needed on some setups
+    # for burning/drive status queries when simple device permission mappings are insufficient.
+    # This is NOT required in most environments — try without it first. To enable, uncomment:
+    # cap_add:
+    #   - SYS_RAWIO
     restart: unless-stopped
 
 volumes:
