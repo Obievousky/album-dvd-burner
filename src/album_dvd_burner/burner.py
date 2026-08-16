@@ -12,6 +12,35 @@ def burn_iso(iso_path: Path, settings: Settings, *, eject_after_burn: bool = Fal
             "Pass --device or set DVD_DEVICE, and mount the drive into the container."
         )
 
+    # Try to detect whether a disc is present using the Linux CD-ROM ioctl.
+    # If detection is unavailable or fails, assume media is present to avoid spurious tray operations.
+    def _media_present(dev_path: str) -> bool:
+        try:
+            import fcntl
+            CDS_NO_INFO = 0
+            CDS_NO_DISC = 1
+            CDS_TRAY_OPEN = 2
+            CDS_DRIVE_NOT_READY = 3
+            CDS_DISC_OK = 4
+            with open(dev_path, "rb") as fd:
+                status = fcntl.ioctl(fd, 0x5326, 0)
+                return int(status) == CDS_DISC_OK
+        except Exception:
+            # If detection isn't supported, don't attempt to auto-eject — assume a disc is present
+            return True
+
+    if not _media_present(device):
+        # Open the tray so the user can insert a disc
+        try:
+            run(["eject", device])
+        except Exception:
+            # If eject isn't available or fails, raise a clear error
+            raise RuntimeError(
+                f"No disc present in {device} and the tray could not be opened automatically."
+            )
+        # Notify caller that user action is required
+        raise RuntimeError(f"No disc present in {device}. Tray opened — insert disc and retry the job.")
+
     cmd = [
         "xorriso",
         "-as",
