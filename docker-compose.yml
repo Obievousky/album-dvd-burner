@@ -1,18 +1,10 @@
-# Merged docker-compose for development and Arcane/prod-style deploys.
-#
-# Differences from the previous variant are handled via environment variables.
-# - For local dev use DATA_ROOT=./data (default uses /opt for arcane deployments)
-# - Set POSTGRES_PASSWORD in .env when deploying to Arcane/production.
-# - Set UID/GID before starting to map container file ownership to the host user.
-
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: album-dvd-postgres
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-album_dvd}
       POSTGRES_USER: ${POSTGRES_USER:-album_dvd}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-album_dvd}
     ports:
       - "5432:5432"
     volumes:
@@ -20,15 +12,12 @@ services:
       - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-album_dvd} -d ${POSTGRES_DB:-album_dvd}"]
-      interval: 10s
+      interval: 5s
       timeout: 5s
       retries: 10
-    restart: unless-stopped
 
   web:
     build: .
-    image: album-dvd-burner:latest
-    container_name: album-dvd-web
     user: "${UID:-1000}:${GID:-1000}"
     ports:
       - "${WEB_PORT:-8080}:8080"
@@ -40,7 +29,7 @@ services:
       POSTGRES_PORT: 5432
       POSTGRES_DB: ${POSTGRES_DB:-album_dvd}
       POSTGRES_USER: ${POSTGRES_USER:-album_dvd}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-album_dvd}
       DVD_DEVICE: ${DVD_DEVICE:-/dev/sr0}
       DVD_STANDARD: ${DVD_STANDARD:-ntsc}
       DATA_ROOT: /data
@@ -49,7 +38,7 @@ services:
       RETENTION_DELAY_HOURS: ${RETENTION_DELAY_HOURS:-3}
       WEB_PORT: 8080
     volumes:
-      - ${DATA_ROOT:-/opt/album-dvd-burner}:/data
+      - ${DATA_ROOT:-./data}:/data
     devices:
       - "${DVD_DEVICE:-/dev/sr0}:${DVD_DEVICE:-/dev/sr0}"
     privileged: true
