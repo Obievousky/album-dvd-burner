@@ -248,6 +248,23 @@ class JobManager:
             snapshot = job
         self._persist(snapshot)
 
+        # If burning is requested, try to open the tray now (best-effort) so the user can insert media
+        if burn:
+            try:
+                from .utils import run
+                dev = settings.dvd_device
+                if Path(dev).exists():
+                    # Best-effort: open tray so user can insert disc while conversion runs
+                    try:
+                        run(["eject", dev])
+                        self._on_progress(job_id, "preparing", f"Tray opened for {dev}; please insert disc before burning.", None)
+                    except Exception:
+                        # If eject isn't available or fails, warn but continue
+                        self._on_progress(job_id, "preparing", f"Could not open tray automatically for {dev}; please insert disc before burning.", None)
+            except Exception:
+                # If anything goes wrong opening the tray, don't block the job — just proceed with conversion
+                pass
+
         try:
             result = run_pipeline(
                 album_folders,
