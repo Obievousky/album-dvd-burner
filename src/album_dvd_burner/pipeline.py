@@ -31,6 +31,7 @@ def run_pipeline(
     job_id: str | None = None,
     retention: RetentionOptions | None = None,
     on_progress: ProgressCallback | None = None,
+    eject_after_burn: bool = False,
 ) -> ProcessResult:
     workspaces = [path.resolve() for path in album_folders]
     if not workspaces:
@@ -96,6 +97,15 @@ def run_pipeline(
     if burn:
         tracker.set_stage("burning", f"Burning to {settings.dvd_device}", total=1)
         burn_iso(iso_path, settings)
+        # Optionally eject the tray after a successful burn if requested per-job
+        if eject_after_burn:
+            try:
+                from .utils import run as _run_cmd
+
+                _run_cmd(["eject", settings.dvd_device])
+                tracker.log("burning", "Ejected DVD tray after burn.")
+            except Exception as exc:
+                tracker.log("burning", f"Warning: failed to eject DVD tray: {exc}")
         mark_burned(settings, code)
         tracker.set("burning", "Burn complete.", current=1)
     else:
