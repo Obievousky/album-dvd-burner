@@ -50,6 +50,7 @@ class CreateJobRequest(BaseModel):
     burn: bool = True
     standard: str | None = None
     retention: RetentionRequest = Field(default_factory=RetentionRequest)
+    eject_after_burn: bool = False
 
 
 def get_settings() -> Settings:
@@ -300,6 +301,7 @@ def create_app() -> FastAPI:
                 folders,
                 job_settings,
                 burn=body.burn,
+                eject_after_burn=body.eject_after_burn,
                 retention=retention,
             )
         except RuntimeError as exc:

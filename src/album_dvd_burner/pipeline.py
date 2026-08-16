@@ -30,6 +30,7 @@ def run_pipeline(
     burn_code: str | None = None,
     job_id: str | None = None,
     retention: RetentionOptions | None = None,
+    eject_after_burn: bool = False,
     on_progress: ProgressCallback | None = None,
 ) -> ProcessResult:
     workspaces = [path.resolve() for path in album_folders]

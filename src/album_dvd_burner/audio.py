@@ -39,8 +39,12 @@ def probe_audio(path: Path) -> AudioInfo:
 
 
 def needs_conversion(info: AudioInfo) -> bool:
-    # Convert when source is 44.1 kHz (typical CD) — preserve higher sample rates
-    return info.sample_rate == 44100
+    # Preserve the highest DVD-safe rate available: 48 kHz for CD-like sources,
+    # 96 kHz when the source is already higher than 48 kHz, and 24-bit whenever available.
+    return (
+        info.sample_rate not in (48000, 96000)
+        or info.bit_depth not in (16, 24)
+    )
 
 
 def convert_album_to_48k(workspace: Path, tracker: ProgressTracker | None = None) -> Path:
@@ -52,7 +56,7 @@ def convert_album_to_48k(workspace: Path, tracker: ProgressTracker | None = None
     first = probe_audio(audio_files[0])
     if not needs_conversion(first):
         if tracker:
-            tracker.log("preparing", f"No conversion needed for {workspace.name} (already DVD-ready)")
+            tracker.log("preparing", f"No conversion needed for {workspace.name} (already highest DVD-safe quality)")
         return source_dir
 
     for path in audio_files[1:]:
@@ -65,7 +69,7 @@ def convert_album_to_48k(workspace: Path, tracker: ProgressTracker | None = None
     out_dir = converted_dir(workspace)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # Choose the best reasonable target bit depth: if source is 24-bit or higher, keep 24-bit
+    target_sample_rate = 96000 if first.sample_rate > 48000 else 48000
     target_bit_depth = 24 if first.bit_depth >= 24 else 16
     codec = "pcm_s24le" if target_bit_depth == 24 else "pcm_s16le"
 
@@ -82,7 +86,7 @@ def convert_album_to_48k(workspace: Path, tracker: ProgressTracker | None = None
         if tracker:
             tracker.log(
                 "preparing",
-                f"[{index}/{len(audio_files)}] Converting {first.sample_rate // 1000}→48 kHz ({target_bit_depth}-bit): {src.name}",
+                f"[{index}/{len(audio_files)}] Converting {first.sample_rate // 1000} kHz → {target_sample_rate // 1000} kHz ({target_bit_depth}-bit): {src.name}",
             )
 
         # Use high-quality resampler (soxr) when available
@@ -95,11 +99,10 @@ def convert_album_to_48k(workspace: Path, tracker: ProgressTracker | None = None
             "-i",
             str(src),
             "-ar",
-            "48000",
+            str(target_sample_rate),
             "-acodec",
             codec,
         ]
-        # Use aresample filter with soxr if ffmpeg supports it — improves quality
         cmd.extend(["-af", "aresample=resampler=soxr"])
         cmd.append(str(dst))
 

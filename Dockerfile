@@ -4,7 +4,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     dvdauthor \
     xorriso \
-    dvd+rw-tools \
+    eject \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 

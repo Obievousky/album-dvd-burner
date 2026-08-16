@@ -64,15 +64,12 @@ def _create_track_vob(
     """
     vob_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Decide target audio codec and sample rate
+    # Keep the highest DVD-safe audio quality available: 96 kHz whenever the source is
+    # above 48 kHz, otherwise 48 kHz, while preserving 24-bit PCM when present.
     target_samplerate = 48000
     target_codec = "pcm_s16be"
     if album_audio_info is not None:
-        if album_audio_info.sample_rate == 96000:
-            target_samplerate = 96000
-        else:
-            # For DVD we target 48 kHz (we convert 44.1 -> 48 earlier in pipeline)
-            target_samplerate = 48000
+        target_samplerate = 96000 if album_audio_info.sample_rate > 48000 else 48000
         if album_audio_info.bit_depth >= 24:
             target_codec = "pcm_s24be"
         else:
@@ -260,8 +257,7 @@ def author_dvd(
             files_list = '\n'.join(sorted(str(p.relative_to(output_dir)) for p in output_dir.rglob('*')))
             raise RuntimeError(
                 f"dvdauthor failed (exit {proc.returncode}).\n"
-                f"stdout:\n{proc.stdout}\n\nstderr:\n{proc.stderr}\n\n"
-                f"Output directory contents:\n{files_list}"
+                f"See dvdauthor stdout/stderr in authoring logs for details."
             )
 
         if tracker:
@@ -280,9 +276,8 @@ def author_dvd(
             files_list = '\n'.join(sorted(str(p.relative_to(output_dir)) for p in output_dir.rglob('*')))
             raise RuntimeError(
                 "dvdauthor did not produce a valid VIDEO_TS directory. "
-                "genisoimage requires a VIDEO_TS folder with .IFO files. "
-                "Check previous 'authoring' logs for errors.\n"
-                f"Output directory contents:\n{files_list}"
+                "A VIDEO_TS folder with .IFO files is required. "
+                "Check previous 'authoring' logs for errors."
             )
 
         if tracker:
@@ -310,19 +305,22 @@ def author_dvd(
             tmp_iso_path.unlink()
 
         # xorriso is the canonical ISO writer here; generate the ISO outside of the DVD tree to avoid self-scanning.
+        # Use xorriso native actions: create an image file and map VIDEO_TS into it, then commit.
+        # This avoids mkisofs emulation options that may not be supported in some xorriso builds.
+        video_ts = output_dir / "VIDEO_TS"
         proc_iso = subprocess.run(
             [
                 "xorriso",
-                "-as",
-                "mkisofs",
-                "-o",
+                "-outdev",
                 str(tmp_iso_path),
-                "-dvd-video",
-                "-V",
+                "-volid",
                 "DVD_VIDEO",
-                str(output_dir),
+                "-map",
+                str(video_ts),
+                "VIDEO_TS",
+                "-commit",
             ],
-            cwd=output_dir,
+            cwd=output_dir.parent,
             capture_output=True,
             text=True,
         )
@@ -337,8 +335,7 @@ def author_dvd(
             files_list = '\n'.join(sorted(str(p.relative_to(output_dir)) for p in output_dir.rglob('*')))
             raise RuntimeError(
                 f"xorriso failed (exit {proc_iso.returncode}).\n"
-                f"stdout:\n{proc_iso.stdout}\n\nstderr:\n{proc_iso.stderr}\n\n"
-                f"Output directory contents:\n{files_list}"
+                f"See xorriso stdout/stderr in the authoring logs for details."
             )
 
         if tmp_iso_path.exists():
