@@ -494,6 +494,7 @@ async function startJob(event) {
   }
 
   const burn = document.getElementById("burn-disc").checked;
+  const ejectAfterBurn = document.getElementById("eject-after-burn").checked;
   const standard = document.getElementById("standard").value;
   const button = document.getElementById("start-job");
   button.disabled = true;

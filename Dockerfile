@@ -3,8 +3,8 @@ FROM python:3.12-slim-bookworm
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     dvdauthor \
-    genisoimage \
-    dvd+rw-tools \
+    xorriso \
+    eject \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 

@@ -64,15 +64,12 @@ def _create_track_vob(
     """
     vob_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Decide target audio codec and sample rate
+    # Keep the highest DVD-safe audio quality available: 96 kHz whenever the source is
+    # above 48 kHz, otherwise 48 kHz, while preserving 24-bit PCM when present.
     target_samplerate = 48000
     target_codec = "pcm_s16be"
     if album_audio_info is not None:
-        if album_audio_info.sample_rate == 96000:
-            target_samplerate = 96000
-        else:
-            # For DVD we target 48 kHz (we convert 44.1 -> 48 earlier in pipeline)
-            target_samplerate = 48000
+        target_samplerate = 96000 if album_audio_info.sample_rate > 48000 else 48000
         if album_audio_info.bit_depth >= 24:
             target_codec = "pcm_s24be"
         else:
@@ -260,8 +257,7 @@ def author_dvd(
             files_list = '\n'.join(sorted(str(p.relative_to(output_dir)) for p in output_dir.rglob('*')))
             raise RuntimeError(
                 f"dvdauthor failed (exit {proc.returncode}).\n"
-                f"stdout:\n{proc.stdout}\n\nstderr:\n{proc.stderr}\n\n"
-                f"Output directory contents:\n{files_list}"
+                f"See dvdauthor stdout/stderr in authoring logs for details."
             )
 
         if tracker:
@@ -280,45 +276,72 @@ def author_dvd(
             files_list = '\n'.join(sorted(str(p.relative_to(output_dir)) for p in output_dir.rglob('*')))
             raise RuntimeError(
                 "dvdauthor did not produce a valid VIDEO_TS directory. "
-                "genisoimage requires a VIDEO_TS folder with .IFO files. "
-                "Check previous 'authoring' logs for errors.\n"
-                f"Output directory contents:\n{files_list}"
+                "A VIDEO_TS folder with .IFO files is required. "
+                "Check previous 'authoring' logs for errors."
             )
 
         if tracker:
-            tracker.log("authoring", "Creating disc ISO with genisoimage...")
+            tracker.log("authoring", "Creating disc ISO with xorriso...")
+
+        # Ensure VIDEO_TS contains a VIDEO_TS.IFO (VMG). Some dvdauthor setups produce only VTS_01_0.IFO.
+        vts0 = video_ts / "VTS_01_0.IFO"
+        vmg = video_ts / "VIDEO_TS.IFO"
+        bup0 = video_ts / "VTS_01_0.BUP"
+        vmg_bup = video_ts / "VIDEO_TS.BUP"
+        try:
+            if not vmg.exists() and vts0.exists():
+                shutil.copy2(vts0, vmg)
+                if bup0.exists():
+                    shutil.copy2(bup0, vmg_bup)
+                if tracker:
+                    tracker.advance("authoring", "Created VIDEO_TS.IFO/VIDEO_TS.BUP from VTS_01_0 files for compatibility")
+        except Exception as exc:
+            if tracker:
+                tracker.advance("authoring", f"Warning: failed to create VIDEO_TS.IFO: {exc}")
 
         iso_path = output_dir / "disc.iso"
-        # Force input charset to UTF-8 and capture output for diagnostics
-        # Try genisoimage without -input-charset for maximum compatibility
+        tmp_iso_path = output_dir.parent / f"{output_dir.name}.tmp.iso"
+        if tmp_iso_path.exists():
+            tmp_iso_path.unlink()
+
+        # xorriso is the canonical ISO writer here; generate the ISO outside of the DVD tree to avoid self-scanning.
+        # Use xorriso native actions: create an image file and map VIDEO_TS into it, then commit.
+        # This avoids mkisofs emulation options that may not be supported in some xorriso builds.
+        video_ts = output_dir / "VIDEO_TS"
         proc_iso = subprocess.run(
             [
-                "genisoimage",
-                "-o",
-                str(iso_path),
-                "-dvd-video",
-                str(output_dir),
+                "xorriso",
+                "-outdev",
+                str(tmp_iso_path),
+                "-volid",
+                "DVD_VIDEO",
+                "-map",
+                str(video_ts),
+                "VIDEO_TS",
+                "-commit",
             ],
-            cwd=output_dir,
+            cwd=output_dir.parent,
             capture_output=True,
             text=True,
         )
 
         if tracker:
             if proc_iso.stdout:
-                tracker.advance("authoring", f"genisoimage stdout: {proc_iso.stdout.strip()[:2000]}")
+                tracker.advance("authoring", f"xorriso stdout: {proc_iso.stdout.strip()[:2000]}")
             if proc_iso.stderr:
-                tracker.advance("authoring", f"genisoimage stderr: {proc_iso.stderr.strip()[:2000]}")
+                tracker.advance("authoring", f"xorriso stderr: {proc_iso.stderr.strip()[:2000]}")
 
-        # If genisoimage fails, surface stderr and output contents to help debugging
         if proc_iso.returncode != 0:
             files_list = '\n'.join(sorted(str(p.relative_to(output_dir)) for p in output_dir.rglob('*')))
-            # If failure mentions input-charset or other charset hints, recommend trying alternate genisoimage
             raise RuntimeError(
-                f"genisoimage failed (exit {proc_iso.returncode}).\n"
-                f"stdout:\n{proc_iso.stdout}\n\nstderr:\n{proc_iso.stderr}\n\n"
-                f"Output directory contents:\n{files_list}"
+                f"xorriso failed (exit {proc_iso.returncode}).\n"
+                f"See xorriso stdout/stderr in the authoring logs for details."
             )
+
+        if tmp_iso_path.exists():
+            if iso_path.exists():
+                iso_path.unlink()
+            shutil.move(str(tmp_iso_path), str(iso_path))
 
         if tracker:
             size_mb = iso_path.stat().st_size / (1024 * 1024)
