@@ -34,7 +34,6 @@ class Job:
     id: str
     album_names: list[str]
     burn: bool
-    eject_after_burn: bool = False
     retention: RetentionOptions = field(default_factory=RetentionOptions)
     status: JobStatus = JobStatus.QUEUED
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
@@ -52,7 +51,6 @@ class Job:
             "id": self.id,
             "album_names": self.album_names,
             "burn": self.burn,
-            "eject_after_burn": self.eject_after_burn,
             "retention": self.retention.to_dict(),
             "status": self.status.value,
             "created_at": self.created_at,
@@ -88,7 +86,6 @@ class Job:
             id=data["id"],
             album_names=data["album_names"],
             burn=data["burn"],
-            eject_after_burn=data.get("eject_after_burn", False),
             retention=RetentionOptions.from_dict(data.get("retention")),
             status=status,
             created_at=data["created_at"],
@@ -176,7 +173,6 @@ class JobManager:
         settings: Settings,
         *,
         burn: bool,
-        eject_after_burn: bool = False,
         retention: RetentionOptions | None = None,
     ) -> Job:
         with self._lock:
@@ -190,7 +186,6 @@ class JobManager:
                 id=str(uuid.uuid4()),
                 album_names=[path.name for path in album_folders],
                 burn=burn,
-                eject_after_burn=eject_after_burn,
                 retention=retention or RetentionOptions(),
             )
             self._jobs[job.id] = job
@@ -199,7 +194,7 @@ class JobManager:
 
         thread = threading.Thread(
             target=self._run,
-            args=(job.id, album_folders, settings, burn, job.eject_after_burn, job.retention),
+            args=(job.id, album_folders, settings, burn, job.retention),
             daemon=True,
         )
         thread.start()
@@ -237,7 +232,6 @@ class JobManager:
         album_folders: list[Path],
         settings: Settings,
         burn: bool,
-        eject_after_burn: bool,
         retention: RetentionOptions,
     ) -> None:
         with self._lock:
