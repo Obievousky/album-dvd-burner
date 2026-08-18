@@ -20,7 +20,7 @@ See [storage.md](storage.md) for retention options.
 
 ## Deploy
 
-1. `sudo mkdir -p /opt/album-dvd-burner && sudo chown $USER /opt/album-dvd-burner`
+1. On the VM, configure `.env` then run `./docker/provision.sh` to create `/opt/album-dvd-burner` with the app's ownership.
 2. Arcane → Stacks → `docker-compose.yml`
 3. Set env: `POSTGRES_PASSWORD`, `DATA_ROOT=/opt/album-dvd-burner`, and `DVD_DEVICE=/dev/sr0`. Also set `DVD_GID` to the result of `stat -c '%g' /dev/sr0` on the VM.
 4. Pass optical drive from Proxmox first → [proxmox.md](proxmox.md)

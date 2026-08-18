@@ -16,22 +16,6 @@ services:
       timeout: 5s
       retries: 10
 
-  init-data:
-    image: alpine:3.21
-    user: "0:0"
-    environment:
-      APP_UID: ${APP_UID:-10001}
-      APP_GID: ${APP_GID:-10001}
-    volumes:
-      - ${DATA_ROOT:-./data}:/data
-    command:
-      - /bin/sh
-      - -ec
-      - |
-        mkdir -p /data
-        chown "$$APP_UID:$$APP_GID" /data
-    restart: "no"
-
   web:
     build: .
     ports:
@@ -39,9 +23,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      init-data:
-        condition: service_completed_successfully
-    # Dedicated, non-root application account. The init-data service owns /data.
+    # Dedicated, non-root application account. Provision DATA_ROOT before startup.
     user: "${APP_UID:-10001}:${APP_GID:-10001}"
     group_add:
       - "${DVD_GID:-65534}"

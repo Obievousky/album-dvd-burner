@@ -22,10 +22,11 @@ Hidden runtime folders (auto-managed): `.jobs/`, `.retention-queue/`, `.staging-
 
 ```bash
 cp .env.example .env
+./docker/provision.sh
 docker compose up -d --build
 ```
 
-The `init-data` service creates and assigns the data directory to the non-root app
+The provisioning script creates and assigns the data directory to the non-root app
 account. Set `DVD_GID` in `.env` to the numeric group of your optical device before
 burning. Open **http://localhost:8080**.
 

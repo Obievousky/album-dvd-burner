@@ -2,9 +2,9 @@
 
 ## 1. Host data directory
 
-Set `DATA_ROOT` below. The one-shot `init-data` Compose service creates the directory
-and assigns it to the app's non-root account automatically. No separate `input/` or
-`dvd/` folders are needed.
+Set `DATA_ROOT` below, then run `./docker/provision.sh`. It creates the directory and
+assigns it to the app's non-root account. No separate `input/` or `dvd/` folders are
+needed.
 
 ## 2. Environment file
 
@@ -23,6 +23,7 @@ DVD_DEVICE=/dev/sr0
 ## 3. Start the stack
 
 ```bash
+./docker/provision.sh
 docker compose up -d --build
 ```
 
