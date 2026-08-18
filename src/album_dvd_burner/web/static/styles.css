@@ -210,6 +210,32 @@ input[type="text"]:focus, select:focus {
 
 .album-card input { margin-top: 0.2rem; }
 
+.album-cover {
+  width: 68px;
+  height: 68px;
+  flex: 0 0 68px;
+  overflow: hidden;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--bg);
+}
+
+.album-cover img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.album-cover.missing {
+  display: grid;
+  place-items: center;
+  padding: 0.35rem;
+  color: var(--muted);
+  font-size: 0.7rem;
+  text-align: center;
+}
+
 .album-meta { flex: 1; }
 .album-title { font-weight: 600; }
 .album-tags { color: var(--accent-soft); font-size: 0.82rem; margin-top: 0.15rem; }

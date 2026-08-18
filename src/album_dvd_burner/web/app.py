@@ -217,6 +217,17 @@ def create_app() -> FastAPI:
     def get_albums(settings: Settings = Depends(get_settings)) -> list[dict]:
         return [_scan_album(path) for path in list_album_workspaces(settings.data_root)]
 
+    @app.get("/api/albums/{album_name}/artwork", dependencies=[Depends(verify_api_key)])
+    def get_album_artwork(
+        album_name: str,
+        settings: Settings = Depends(get_settings),
+    ) -> FileResponse:
+        workspace = _resolve_workspace(settings, album_name)
+        artwork = find_artwork(workspace)
+        if artwork is None or not artwork.is_file():
+            raise HTTPException(status_code=404, detail="Album artwork not found")
+        return FileResponse(artwork)
+
     @app.get("/api/burns", dependencies=[Depends(verify_api_key)])
     def get_burns(settings: Settings = Depends(get_settings)) -> list[dict]:
         return list_burns(settings)

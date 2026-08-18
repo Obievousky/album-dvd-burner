@@ -155,16 +155,21 @@ function renderAlbums() {
       : "No audio detected";
     const artwork = album.has_artwork
       ? '<span class="badge ok">artwork</span>'
-      : '<span class="badge warn">no artwork</span>';
+      : '<span class="badge warn">no cover image</span>';
     const convertedLabel = album.converted_label || "16/48";
     const converted = album.converted ? `<span class="badge ok">${convertedLabel}</span>` : "";
     const output = album.has_output ? '<span class="badge ok">has ISO</span>' : "";
     const tags = [album.artist, album.album].filter(Boolean).join(" · ");
+    const artworkUrl = downloadUrl(`/api/albums/${encodeURIComponent(album.name)}/artwork`);
+    const cover = album.has_artwork
+      ? `<div class="album-cover"><img src="${escapeHtml(artworkUrl)}" alt="Cover for ${escapeHtml(album.name)}" loading="lazy" /></div>`
+      : '<div class="album-cover missing" aria-label="No album cover">No cover</div>';
 
     return `
       <div class="album-row">
         <label class="album-card">
           <input type="checkbox" name="album" value="${escapeHtml(album.name)}" />
+          ${cover}
           <div class="album-meta">
             <div class="album-title">${escapeHtml(album.name)}</div>
             ${tags ? `<div class="album-tags">${escapeHtml(tags)}</div>` : ""}

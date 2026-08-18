@@ -20,8 +20,6 @@ def find_artwork(workspace: Path) -> Path | None:
                 return path
 
     return None
-
-
 def resize_artwork(source: Path, dest: Path, width: int = 720, height: int = 480) -> Path:
     dest.parent.mkdir(parents=True, exist_ok=True)
     with Image.open(source) as image:
