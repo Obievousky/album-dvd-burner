@@ -64,10 +64,10 @@ DVD_DEVICE=/dev/sr0
 
 ```bash
 sudo usermod -aG cdrom $USER
-# or add the container user via privileged mode (already set in compose)
+# Then set DVD_PRIVILEGED=true in .env and restart the stack.
 ```
 
-The Docker stack runs `privileged: true` and passes `${DVD_DEVICE}` — that is usually enough once `/dev/sr0` exists in the VM.
+Set `DVD_PRIVILEGED=true` in `.env` to expose the passed-through optical drive to the web container. Keep it `false` for ISO-only use.
 
 ## 5. Confirm in the Web UI
 
@@ -81,12 +81,8 @@ Open `http://<vm-ip>:8080`
 | Symptom | Fix |
 |---------|-----|
 | Drive not in VM `lsblk` | Re-add USB device in Proxmox; reboot VM |
-| `/dev/sr0` exists but container can't burn | Check `devices:` mapping in compose; confirm `privileged: true` |
+| `/dev/sr0` exists but container can't burn | Set `DVD_PRIVILEGED=true`, then restart the stack |
 | Drive works on host but not VM | Another VM may have claimed USB; remove from other VMs |
 | `growisofs: no media` | Insert blank DVD; try `wodim -prcap dev=/dev/sr0` on the VM |
-
-## Arcane note
-
-Deploy `docker-compose.arcane.yml` on the **Ubuntu VM environment** in Arcane (where the drive is passed through), not on the Proxmox host itself unless Docker runs there.
 
 After passthrough, expose port **8080** in your firewall/reverse proxy if you access the UI from your Mac.

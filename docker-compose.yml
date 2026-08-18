@@ -23,7 +23,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    # Run container as the host user by default; override LOCAL_UID/LOCAL_GID when starting
+    # Match the host user so generated files remain editable on the host.
     user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
     environment:
       POSTGRES_HOST: postgres
@@ -40,15 +40,9 @@ services:
       WEB_PORT: 8080
     volumes:
       - ${DATA_ROOT:-./data}:/data
-    devices:
-      - "${DVD_DEVICE:-/dev/sr0}:${DVD_DEVICE:-/dev/sr0}"
-    # Prefer granting minimal capabilities instead of full privileged mode
-    privileged: false
-    # Optional capability: SYS_RAWIO allows low-level raw IO (ioctl) needed on some setups
-    # for burning/drive status queries when simple device permission mappings are insufficient.
-    # This is NOT required in most environments — try without it first. To enable, uncomment:
-    # cap_add:
-    #   - SYS_RAWIO
+    # The stack starts in ISO-only mode on every platform. On a Linux host with a
+    # passed-through optical drive, set DVD_PRIVILEGED=true to expose host devices.
+    privileged: ${DVD_PRIVILEGED:-false}
     restart: unless-stopped
 
 volumes:

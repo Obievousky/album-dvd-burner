@@ -8,7 +8,7 @@ from pathlib import Path
 from .artwork import prepare_artwork
 from .audio import AudioInfo, prepare_album_audio
 from .progress import ProgressTracker
-from .utils import run, run_capture
+from .utils import run
 
 
 @dataclass
@@ -63,6 +63,9 @@ def _create_track_vob(
     encode audio as 24-bit PCM; otherwise use 16-bit. Use soxr resampler for best quality.
     """
     vob_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if standard not in {"ntsc", "pal"}:
+        raise ValueError("DVD standard must be 'ntsc' or 'pal'")
 
     # Keep the highest DVD-safe audio quality available: 96 kHz whenever the source is
     # above 48 kHz, otherwise 48 kHz, while preserving 24-bit PCM when present.
@@ -121,6 +124,10 @@ def _create_track_vob(
         str(artwork),
         "-i",
         str(track),
+        # The target supplies the DVD container, frame rate, and mux parameters.
+        # Keep it before explicit codecs so the quality choices below win.
+        "-target",
+        _ffmpeg_target(standard),
         "-c:v",
         "mpeg2video",
         "-q:v",
@@ -138,11 +145,9 @@ def _create_track_vob(
         str(target_samplerate),
         "-c:a",
         target_codec,
+        "-shortest",
         "-f",
         "vob",
-        "-target",
-        _ffmpeg_target(standard),
-        "-shortest",
         str(vob_path),
     ]
 
@@ -186,6 +191,8 @@ def author_dvd(
 ) -> Path:
     if not albums:
         raise ValueError("At least one album folder is required")
+    if standard not in {"ntsc", "pal"}:
+        raise ValueError("DVD standard must be 'ntsc' or 'pal'")
 
     work_root = work_root or (output_dir.parent / ".dvd_work")
     if work_root.exists():
@@ -254,7 +261,6 @@ def author_dvd(
             if proc.stderr:
                 tracker.advance("authoring", f"dvdauthor stderr: {proc.stderr.strip()[:2000]}")
         if proc.returncode != 0:
-            files_list = '\n'.join(sorted(str(p.relative_to(output_dir)) for p in output_dir.rglob('*')))
             raise RuntimeError(
                 f"dvdauthor failed (exit {proc.returncode}).\n"
                 f"See dvdauthor stdout/stderr in authoring logs for details."
@@ -273,7 +279,6 @@ def author_dvd(
                     has_ifo = True
                     break
         if not video_ts.is_dir() or not has_ifo:
-            files_list = '\n'.join(sorted(str(p.relative_to(output_dir)) for p in output_dir.rglob('*')))
             raise RuntimeError(
                 "dvdauthor did not produce a valid VIDEO_TS directory. "
                 "A VIDEO_TS folder with .IFO files is required. "
@@ -332,7 +337,6 @@ def author_dvd(
                 tracker.advance("authoring", f"xorriso stderr: {proc_iso.stderr.strip()[:2000]}")
 
         if proc_iso.returncode != 0:
-            files_list = '\n'.join(sorted(str(p.relative_to(output_dir)) for p in output_dir.rglob('*')))
             raise RuntimeError(
                 f"xorriso failed (exit {proc_iso.returncode}).\n"
                 f"See xorriso stdout/stderr in the authoring logs for details."
@@ -342,6 +346,9 @@ def author_dvd(
             if iso_path.exists():
                 iso_path.unlink()
             shutil.move(str(tmp_iso_path), str(iso_path))
+
+        if not iso_path.is_file() or iso_path.stat().st_size == 0:
+            raise RuntimeError("xorriso completed without creating a usable ISO image")
 
         if tracker:
             size_mb = iso_path.stat().st_size / (1024 * 1024)

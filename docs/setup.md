@@ -1,4 +1,4 @@
-# First-time setup (Arcane / Ubuntu VM)
+# First-time setup (Ubuntu VM)
 
 ## 1. Host data directory
 
@@ -21,12 +21,13 @@ Minimum required:
 DATA_ROOT=/opt/album-dvd-burner
 POSTGRES_PASSWORD=pick-a-strong-password-here
 DVD_DEVICE=/dev/sr0
+DVD_PRIVILEGED=true
 ```
 
 ## 3. Start the stack
 
 ```bash
-docker compose -f docker-compose.arcane.yml up -d --build
+docker compose up -d --build
 ```
 
 This automatically creates Postgres database `album_dvd` and the `burns` table on first boot.
@@ -34,7 +35,7 @@ This automatically creates Postgres database `album_dvd` and the `burns` table o
 Verify:
 
 ```bash
-docker compose -f docker-compose.arcane.yml exec postgres \
+docker compose exec postgres \
   psql -U album_dvd -d album_dvd -c '\dt'
 ```
 
@@ -49,14 +50,14 @@ If `WEB_API_KEY` is set, open the UI with `http://<vm-ip>:8080/?key=YOUR_KEY`.
 ## If the DB is missing
 
 ```bash
-docker compose -f docker-compose.arcane.yml exec web album-dvd-burner init-db
+docker compose exec web album-dvd-burner init-db
 ```
 
 Or reset Postgres entirely:
 
 ```bash
-docker compose -f docker-compose.arcane.yml down -v
-docker compose -f docker-compose.arcane.yml up -d --build
+docker compose down -v
+docker compose up -d --build
 ```
 
 Album files in `/opt/album-dvd-burner/` are not affected by a Postgres reset.

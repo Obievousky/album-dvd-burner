@@ -53,29 +53,29 @@ album-dvd-burner init-db
 
 Retention options are configured in the web UI; CLI `process` uses default retention settings.
 
-## Remote VM (Arcane + Proxmox)
+## Remote VM (Proxmox)
 
-1. [docs/setup.md](docs/setup.md) — first-time deploy (Postgres auto-created)
+1. [docs/setup.md](docs/setup.md) — first-time deploy with the primary Compose file
 2. [docs/storage.md](docs/storage.md) — folder layout & retention
 3. [docs/proxmox.md](docs/proxmox.md) — optical drive passthrough
-4. [docs/arcane.md](docs/arcane.md) — Arcane deployment
 
 ## Environment
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `DATA_ROOT` | `./data` (local) / `/opt/album-dvd-burner` (Arcane) | All album workspaces |
+| `DATA_ROOT` | `./data` (local) / `/opt/album-dvd-burner` (server) | All album workspaces |
 | `POSTGRES_HOST` | `localhost` | Postgres host |
 | `POSTGRES_PORT` | `5432` | Postgres port |
 | `POSTGRES_DB` | `album_dvd` | Database name |
 | `POSTGRES_USER` | `album_dvd` | Database user |
-| `POSTGRES_PASSWORD` | — | Required for Arcane compose |
+| `POSTGRES_PASSWORD` | `album_dvd` | PostgreSQL password |
 | `DVD_DEVICE` | `/dev/sr0` | Burner device |
 | `DVD_STANDARD` | `ntsc` | `ntsc` or `pal` |
 | `BURN_ID_PREFIX` | `R.P. No.` | Burn code prefix (`R.P. No. 001 - RE`) |
 | `WEB_PORT` | `8080` | Web UI port |
 | `WEB_API_KEY` | _(empty)_ | Protects all `/api/*` routes except `/api/health`; use `?key=` in the URL |
 | `RETENTION_DELAY_HOURS` | `3` | Grace period before deleting unchecked files (`0` = immediate) |
+| `DVD_PRIVILEGED` | `false` | Set `true` only to expose a passed-through Linux optical drive |
 
 Local `docker-compose.yml` exposes Postgres on port 5432 for development only.
 
