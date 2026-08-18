@@ -24,3 +24,10 @@ def test_safe_resolve_under_blocks_traversal(tmp_path):
     base.mkdir()
     with pytest.raises(ValueError):
         safe_resolve_under(base, "../outside.txt")
+
+
+def test_safe_resolve_under_blocks_absolute_path(tmp_path):
+    base = tmp_path / "data"
+    base.mkdir()
+    with pytest.raises(ValueError):
+        safe_resolve_under(base, str(tmp_path / "outside.txt"))

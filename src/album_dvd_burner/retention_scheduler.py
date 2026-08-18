@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import threading
 import time
 import uuid
@@ -81,7 +82,9 @@ class RetentionScheduler:
         if self._storage_dir is None:
             return
         path = self._storage_dir / f"{entry.id}.json"
-        path.write_text(json.dumps(entry.to_dict(), indent=2), encoding="utf-8")
+        temporary = path.with_suffix(".tmp")
+        temporary.write_text(json.dumps(entry.to_dict(), indent=2), encoding="utf-8")
+        os.replace(temporary, path)
 
     def _remove_entry(self, entry_id: str) -> None:
         with self._lock:
@@ -106,7 +109,7 @@ class RetentionScheduler:
             return None
 
         resolved = target.resolve()
-        if self._data_root and not str(resolved).startswith(str(self._data_root)):
+        if self._data_root and not resolved.is_relative_to(self._data_root):
             return None
 
         delete_at = datetime.now(timezone.utc) + timedelta(hours=delay)

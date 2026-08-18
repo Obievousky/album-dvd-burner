@@ -74,7 +74,7 @@ def _resolve_workspace(settings: Settings, name: str) -> Path:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     root = settings.data_root.resolve()
-    if not str(workspace).startswith(str(root)):
+    if not workspace.is_relative_to(root):
         raise HTTPException(status_code=400, detail="Invalid album path")
     if not workspace.is_dir():
         raise HTTPException(status_code=404, detail=f"Album not found: {name}")
@@ -170,11 +170,15 @@ def _enrich_job(job) -> dict:
 
 def _safe_extract_zip(archive: zipfile.ZipFile, dest: Path) -> None:
     dest = dest.resolve()
-    for member in archive.namelist():
-        if member.endswith("/"):
+    for member in archive.infolist():
+        if member.is_dir():
             continue
+        # A symlink in a zip can point outside dest even when its name is safe.
+        mode = member.external_attr >> 16
+        if mode and (mode & 0o170000) == 0o120000:
+            raise HTTPException(status_code=400, detail="Zip files cannot contain symlinks")
         try:
-            safe_resolve_under(dest, member)
+            safe_resolve_under(dest, member.filename)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail="Zip contains unsafe paths") from exc
     archive.extractall(dest)

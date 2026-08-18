@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import threading
 import uuid
 from dataclasses import dataclass, field
@@ -151,7 +152,9 @@ class JobManager:
         if self._storage_dir is None:
             return
         path = self._storage_dir / f"{job.id}.json"
-        path.write_text(json.dumps(job.to_dict(), indent=2), encoding="utf-8")
+        temporary = path.with_suffix(".tmp")
+        temporary.write_text(json.dumps(job.to_dict(), indent=2), encoding="utf-8")
+        os.replace(temporary, path)
 
     def list_jobs(self) -> list[Job]:
         with self._lock:

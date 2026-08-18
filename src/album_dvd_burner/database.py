@@ -2,9 +2,6 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-import psycopg2
-from psycopg2.extras import Json
-
 from .config import Settings
 from .dvd_author import AlbumTitle
 
@@ -38,6 +35,12 @@ class BurnRecord:
 
 
 def connect(settings: Settings):
+    try:
+        import psycopg2
+    except ImportError as exc:
+        raise RuntimeError(
+            "PostgreSQL support is not installed. Install the project dependencies first."
+        ) from exc
     return psycopg2.connect(
         host=settings.postgres_host,
         port=settings.postgres_port,
@@ -106,6 +109,12 @@ def album_metadata(album: AlbumTitle) -> dict:
 
 
 def insert_burn(settings: Settings, record: BurnRecord) -> str:
+    try:
+        from psycopg2.extras import Json
+    except ImportError as exc:
+        raise RuntimeError(
+            "PostgreSQL support is not installed. Install the project dependencies first."
+        ) from exc
     ensure_schema(settings)
     with connect(settings) as conn:
         with conn.cursor() as cur:

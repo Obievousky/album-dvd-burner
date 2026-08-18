@@ -96,7 +96,7 @@ def run_pipeline(
 
     if burn:
         tracker.set_stage("burning", f"Burning to {settings.dvd_device}", total=1)
-        burn_iso(iso_path, settings)
+        burn_iso(iso_path, settings, eject_after_burn=eject_after_burn)
         mark_burned(settings, code)
         tracker.set("burning", "Burn complete.", current=1)
     else:
