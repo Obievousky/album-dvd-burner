@@ -1,4 +1,5 @@
 from pathlib import Path
+import os
 
 from .config import Settings
 from .utils import run
@@ -12,10 +13,12 @@ def burn_iso(iso_path: Path, settings: Settings, *, eject_after_burn: bool = Fal
     import time
 
     device = settings.dvd_device
-    if not Path(device).exists():
+    device_path = Path(device)
+    if not device_path.is_block_device() or not os.access(device_path, os.R_OK | os.W_OK):
         raise FileNotFoundError(
-            f"DVD device not found: {device}. "
-            "Pass --device or set DVD_DEVICE, and mount the drive into the container."
+            f"DVD device is unavailable or not writable: {device}. "
+            "Pass --device or set DVD_DEVICE, map the drive into the container, "
+            "and add its group through DVD_GID."
         )
 
     def _media_present(dev_path: str) -> bool:

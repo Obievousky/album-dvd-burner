@@ -60,14 +60,11 @@ Set in `.env`:
 DVD_DEVICE=/dev/sr0
 ```
 
-## 4. Permissions (if burn fails with permission denied)
+## 4. Container permissions
 
-```bash
-sudo usermod -aG cdrom $USER
-# Then set DVD_PRIVILEGED=true in .env and restart the stack.
-```
-
-Set `DVD_PRIVILEGED=true` in `.env` to expose the passed-through optical drive to the web container. Keep it `false` for ISO-only use.
+Set `DVD_GID` in `.env` to the numeric group reported by `stat -c '%g' /dev/sr0`.
+The Compose configuration passes that group to the non-root web process and maps
+only the optical device; it does not use privileged mode.
 
 ## 5. Confirm in the Web UI
 
@@ -81,7 +78,7 @@ Open `http://<vm-ip>:8080`
 | Symptom | Fix |
 |---------|-----|
 | Drive not in VM `lsblk` | Re-add USB device in Proxmox; reboot VM |
-| `/dev/sr0` exists but container can't burn | Set `DVD_PRIVILEGED=true`, then restart the stack |
+| `/dev/sr0` exists but container can't burn | Verify `DVD_GID` with `stat -c '%g' /dev/sr0`, restart, then check `docker compose exec web id` |
 | Drive works on host but not VM | Another VM may have claimed USB; remove from other VMs |
 | `growisofs: no media` | Insert blank DVD; try `wodim -prcap dev=/dev/sr0` on the VM |
 

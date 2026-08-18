@@ -22,11 +22,12 @@ Hidden runtime folders (auto-managed): `.jobs/`, `.retention-queue/`, `.staging-
 
 ```bash
 cp .env.example .env
-mkdir -p data
 docker compose up -d --build
 ```
 
-Open **http://localhost:8080**
+The `init-data` service creates and assigns the data directory to the non-root app
+account. Set `DVD_GID` in `.env` to the numeric group of your optical device before
+burning. Open **http://localhost:8080**.
 
 If `WEB_API_KEY` is set in `.env`, append `?key=YOUR_KEY` to the URL (all API routes except `/api/health` require it).
 
@@ -71,11 +72,12 @@ Retention options are configured in the web UI; CLI `process` uses default reten
 | `POSTGRES_PASSWORD` | `album_dvd` | PostgreSQL password |
 | `DVD_DEVICE` | `/dev/sr0` | Burner device |
 | `DVD_STANDARD` | `ntsc` | `ntsc` or `pal` |
+| `APP_UID` / `APP_GID` | `10001` | Dedicated non-root account that owns application data |
+| `DVD_GID` | `24` | Optical-drive group; set it from `stat -c '%g' /dev/sr0` |
 | `BURN_ID_PREFIX` | `R.P. No.` | Burn code prefix (`R.P. No. 001 - RE`) |
 | `WEB_PORT` | `8080` | Web UI port |
 | `WEB_API_KEY` | _(empty)_ | Protects all `/api/*` routes except `/api/health`; use `?key=` in the URL |
 | `RETENTION_DELAY_HOURS` | `3` | Grace period before deleting unchecked files (`0` = immediate) |
-| `DVD_PRIVILEGED` | `false` | Set `true` only to expose a passed-through Linux optical drive |
 
 Local `docker-compose.yml` exposes Postgres on port 5432 for development only.
 

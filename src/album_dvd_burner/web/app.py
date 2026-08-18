@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import os
 import shutil
 import uuid
 import zipfile
@@ -202,7 +203,8 @@ def create_app() -> FastAPI:
 
     @app.get("/api/health")
     def health() -> dict:
-        drive_exists = Path(settings.dvd_device).exists()
+        drive = Path(settings.dvd_device)
+        drive_exists = drive.is_block_device() and os.access(drive, os.R_OK | os.W_OK)
         return {
             "status": "ok",
             "dvd_device": settings.dvd_device,

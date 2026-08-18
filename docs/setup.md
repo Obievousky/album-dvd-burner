@@ -2,12 +2,9 @@
 
 ## 1. Host data directory
 
-```bash
-sudo mkdir -p /opt/album-dvd-burner
-sudo chown -R "$USER:$USER" /opt/album-dvd-burner
-```
-
-Album workspaces are created automatically on upload. No need for separate `input/` or `dvd/` folders.
+Set `DATA_ROOT` below. The one-shot `init-data` Compose service creates the directory
+and assigns it to the app's non-root account automatically. No separate `input/` or
+`dvd/` folders are needed.
 
 ## 2. Environment file
 
@@ -21,7 +18,6 @@ Minimum required:
 DATA_ROOT=/opt/album-dvd-burner
 POSTGRES_PASSWORD=pick-a-strong-password-here
 DVD_DEVICE=/dev/sr0
-DVD_PRIVILEGED=true
 ```
 
 ## 3. Start the stack

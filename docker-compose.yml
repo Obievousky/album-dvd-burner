@@ -16,6 +16,22 @@ services:
       timeout: 5s
       retries: 10
 
+  init-data:
+    image: alpine:3.21
+    user: "0:0"
+    environment:
+      APP_UID: ${APP_UID:-10001}
+      APP_GID: ${APP_GID:-10001}
+    volumes:
+      - ${DATA_ROOT:-./data}:/data
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        mkdir -p /data
+        chown "$$APP_UID:$$APP_GID" /data
+    restart: "no"
+
   web:
     build: .
     ports:
@@ -23,8 +39,12 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    # Match the host user so generated files remain editable on the host.
-    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+      init-data:
+        condition: service_completed_successfully
+    # Dedicated, non-root application account. The init-data service owns /data.
+    user: "${APP_UID:-10001}:${APP_GID:-10001}"
+    group_add:
+      - "${DVD_GID:-65534}"
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
@@ -40,9 +60,10 @@ services:
       WEB_PORT: 8080
     volumes:
       - ${DATA_ROOT:-./data}:/data
-    # The stack starts in ISO-only mode on every platform. On a Linux host with a
-    # passed-through optical drive, set DVD_PRIVILEGED=true to expose host devices.
-    privileged: ${DVD_PRIVILEGED:-false}
+    # The app checks this path at runtime and enables burning only when a drive
+    # is available inside the container.
+    devices:
+      - "${DVD_DEVICE:-/dev/sr0}:${DVD_DEVICE:-/dev/sr0}:rwm"
     restart: unless-stopped
 
 volumes:

@@ -168,8 +168,8 @@ function renderAlbums() {
     return `
       <div class="album-row">
         <label class="album-card">
-          <input type="checkbox" name="album" value="${escapeHtml(album.name)}" />
           ${cover}
+          <input type="checkbox" name="album" value="${escapeHtml(album.name)}" />
           <div class="album-meta">
             <div class="album-title">${escapeHtml(album.name)}</div>
             ${tags ? `<div class="album-tags">${escapeHtml(tags)}</div>` : ""}
