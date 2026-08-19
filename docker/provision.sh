@@ -31,11 +31,14 @@ if [[ "$data_root" != /* ]]; then
 fi
 
 if [[ "$EUID" -eq 0 ]]; then
-    install -d -m 0750 -o "$app_uid" -g "$app_gid" "$data_root"
+    mkdir -p "$data_root"
+    chown "$app_uid:$app_gid" "$data_root"
+    chmod 0750 "$data_root"
 else
-    sudo install -d -m 0750 -o "$app_uid" -g "$app_gid" "$data_root"
+    sudo mkdir -p "$data_root"
+    sudo chown "$app_uid:$app_gid" "$data_root"
+    sudo chmod 0750 "$data_root"
 fi
-
 actual_uid="$(stat -c '%u' "$data_root")"
 actual_gid="$(stat -c '%g' "$data_root")"
 actual_mode="$(stat -c '%a' "$data_root")"
