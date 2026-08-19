@@ -30,6 +30,7 @@ from ..workspaces import (
     converted_dir,
     list_album_workspaces,
     safe_resolve_under,
+    sanitize_name,
 )
 
 from .downloads import job_artifact_response, job_log_response, list_job_outputs
@@ -44,6 +45,10 @@ class RetentionRequest(BaseModel):
     keep_artwork: bool = True
     keep_iso: bool = True
     keep_video_ts: bool = False
+
+
+class RenameAlbumRequest(BaseModel):
+    name: str = Field(min_length=1)
 
 
 class CreateJobRequest(BaseModel):
@@ -409,6 +414,37 @@ def create_app() -> FastAPI:
         result = _scan_album(workspace)
         result["naming_source"] = naming_source
         return result
+
+    @app.patch("/api/albums/{album_name}", dependencies=[Depends(verify_api_key)])
+    def rename_album(
+        album_name: str,
+        body: RenameAlbumRequest,
+        settings: Settings = Depends(get_settings),
+    ) -> dict:
+        running = job_manager.running_job()
+        if running and album_name in running.album_names:
+            raise HTTPException(
+                status_code=409,
+                detail="Cannot rename album while it is part of a running job",
+            )
+        workspace = _resolve_workspace(settings, album_name)
+
+        try:
+            new_name = sanitize_name(body.name)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        target = album_workspace(settings.data_root, new_name)
+        if target.resolve() == workspace.resolve():
+            return _scan_album(workspace)
+        if target.exists():
+            raise HTTPException(
+                status_code=409,
+                detail=f"An album named {new_name!r} already exists",
+            )
+
+        workspace.rename(target)
+        return _scan_album(target)
 
     @app.delete("/api/albums/{album_name}", dependencies=[Depends(verify_api_key)])
     def delete_album(album_name: str, settings: Settings = Depends(get_settings)) -> dict:

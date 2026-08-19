@@ -180,6 +180,7 @@ function renderAlbums() {
             </div>
           </div>
         </label>
+        <button type="button" class="btn ghost album-rename" data-name="${escapeHtml(album.name)}" title="Rename album">Rename</button>
         <button type="button" class="btn ghost danger album-delete" data-name="${escapeHtml(album.name)}" title="Delete album">Delete</button>
       </div>
     `;
@@ -560,19 +561,25 @@ async function uploadZip(file) {
   registerUploadedAlbum(result);
 }
 
+function groupFilesByFolder(files) {
+  const groups = new Map();
+  for (const file of files) {
+    const parts = (file.webkitRelativePath || "").split("/");
+    const folderName = parts[0] || null;
+    const relativePath = parts.slice(1).join("/") || file.name;
+    if (!groups.has(folderName)) groups.set(folderName, []);
+    groups.get(folderName).push({ file, relativePath });
+  }
+  return groups;
+}
+
 async function uploadFolder(files) {
   const override = document.getElementById("album-name").value.trim();
-  const filesWithPaths = files.map((file) => {
-    const parts = (file.webkitRelativePath || "").split("/");
-    return {
-      file,
-      relativePath: parts.slice(1).join("/") || file.name,
-      folderName: parts[0] || null,
-    };
-  });
-  const fallback = filesWithPaths[0]?.folderName || null;
-  const result = await uploadAlbumFiles(filesWithPaths, override, fallback);
-  registerUploadedAlbum(result);
+  const groups = groupFilesByFolder(files);
+  for (const [folderName, filesWithPaths] of groups) {
+    const result = await uploadAlbumFiles(filesWithPaths, override, folderName || null);
+    registerUploadedAlbum(result);
+  }
 }
 
 function readAllEntries(dirReader) {
@@ -687,11 +694,35 @@ async function deleteAlbum(name) {
   await refreshAlbums();
 }
 
+async function renameAlbum(name) {
+  const newName = prompt("New album name", name);
+  if (newName == null) return;
+  const trimmed = newName.trim();
+  if (!trimmed || trimmed === name) return;
+  await api(`/api/albums/${encodeURIComponent(name)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ name: trimmed }),
+  });
+  await refreshAlbums();
+}
+
 function bindEvents() {
   document.getElementById("refresh-albums").addEventListener("click", refreshAlbums);
   document.getElementById("refresh-burns")?.addEventListener("click", refreshBurns);
   document.getElementById("persistent").addEventListener("change", toggleRetentionOptions);
   document.getElementById("album-list").addEventListener("click", async (event) => {
+    const renameButton = event.target.closest(".album-rename");
+    if (renameButton) {
+      event.preventDefault();
+      event.stopPropagation();
+      try {
+        await renameAlbum(renameButton.dataset.name);
+      } catch (error) {
+        alert(error.message);
+      }
+      return;
+    }
+
     const button = event.target.closest(".album-delete");
     if (!button) return;
     event.preventDefault();

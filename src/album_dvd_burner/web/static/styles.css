@@ -186,9 +186,13 @@ input[type="text"]:focus, select:focus {
 
 .album-row .album-card { flex: 1; }
 
+.album-row .album-rename,
 .album-row .album-delete {
   align-self: center;
   flex-shrink: 0;
+}
+
+.album-row .album-delete {
   color: var(--danger);
   border-color: rgba(224, 122, 122, 0.35);
 }
