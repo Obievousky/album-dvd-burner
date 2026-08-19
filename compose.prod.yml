@@ -1,0 +1,23 @@
+services:
+  app:
+    image: ghcr.io/obievousky/album-dvd-burner:${APP_VERSION}
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-album_dvd}
+      POSTGRES_USER: ${POSTGRES_USER:-album_dvd}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-album_dvd}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-album_dvd} -d ${POSTGRES_DB:-album_dvd}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:
