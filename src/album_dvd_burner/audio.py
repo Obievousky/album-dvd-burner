@@ -38,55 +38,73 @@ def probe_audio(path: Path) -> AudioInfo:
     )
 
 
-def needs_conversion(info: AudioInfo) -> bool:
-    # Preserve the highest DVD-safe rate available: 48 kHz for CD-like sources,
-    # 96 kHz when the source is already higher than 48 kHz, and 24-bit whenever available.
-    return (
-        info.sample_rate not in (48000, 96000)
-        or info.bit_depth not in (16, 24)
-    )
-
-
 def convert_album_to_48k(workspace: Path, tracker: ProgressTracker | None = None) -> Path:
     source_dir = album_source_dir(workspace)
     audio_files = list_audio_files(source_dir, recursive=True)
     if not audio_files:
         raise ValueError(f"No audio files found in {workspace}")
 
-    first = probe_audio(audio_files[0])
-    if not needs_conversion(first):
+    infos = [probe_audio(path) for path in audio_files]
+
+    # Pick the highest DVD-safe quality present across the album: 96 kHz when any
+    # source is already above 48 kHz, otherwise 48 kHz; 24-bit when any source is
+    # 24-bit (or higher), otherwise 16-bit.
+    target_sample_rate = 96000 if any(info.sample_rate > 48000 for info in infos) else 48000
+    target_bit_depth = 24 if any(info.bit_depth >= 24 for info in infos) else 16
+    codec = "pcm_s24le" if target_bit_depth == 24 else "pcm_s16le"
+
+    # Skip conversion only when every track is already homogeneous DVD-safe stereo.
+    if all(
+        info.sample_rate == target_sample_rate
+        and info.bit_depth == target_bit_depth
+        and info.channels == 2
+        for info in infos
+    ):
         if tracker:
-            tracker.log("preparing", f"No conversion needed for {workspace.name} (already highest DVD-safe quality)")
+            tracker.log(
+                "preparing",
+                f"No conversion needed for {workspace.name} "
+                f"({target_bit_depth}-bit / {target_sample_rate // 1000} kHz stereo)",
+            )
         return source_dir
 
-    for path in audio_files[1:]:
-        info = probe_audio(path)
-        if info.sample_rate != first.sample_rate or info.bit_depth != first.bit_depth:
-            raise ValueError(
-                f"Mixed audio formats in {workspace}: {first} vs {info} ({path.name})"
-            )
+    distinct_formats = {(info.sample_rate, info.bit_depth, info.channels) for info in infos}
+    if len(distinct_formats) > 1 and tracker:
+        tracker.log(
+            "preparing",
+            f"Normalizing mixed audio formats in {workspace.name} → "
+            f"{target_bit_depth}-bit / {target_sample_rate // 1000} kHz stereo",
+        )
 
     out_dir = converted_dir(workspace)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    target_sample_rate = 96000 if first.sample_rate > 48000 else 48000
-    target_bit_depth = 24 if first.bit_depth >= 24 else 16
-    codec = "pcm_s24le" if target_bit_depth == 24 else "pcm_s16le"
-
     for index, src in enumerate(audio_files, start=1):
         dst = out_dir / f"{src.stem}.wav"
         if dst.exists():
-            if tracker:
-                tracker.log(
-                    "preparing",
-                    f"[{index}/{len(audio_files)}] Skipping existing conversion: {src.name}",
-                )
-            continue
+            # Reuse the cached conversion only if it already matches the target.
+            try:
+                existing = probe_audio(dst)
+            except Exception:
+                existing = None
+            if (
+                existing is not None
+                and existing.sample_rate == target_sample_rate
+                and existing.bit_depth == target_bit_depth
+                and existing.channels == 2
+            ):
+                if tracker:
+                    tracker.log(
+                        "preparing",
+                        f"[{index}/{len(audio_files)}] Skipping existing conversion: {src.name}",
+                    )
+                continue
 
         if tracker:
             tracker.log(
                 "preparing",
-                f"[{index}/{len(audio_files)}] Converting {first.sample_rate // 1000} kHz → {target_sample_rate // 1000} kHz ({target_bit_depth}-bit): {src.name}",
+                f"[{index}/{len(audio_files)}] Converting to "
+                f"{target_sample_rate // 1000} kHz / {target_bit_depth}-bit stereo: {src.name}",
             )
 
         # Use high-quality resampler (soxr) when available
@@ -100,6 +118,8 @@ def convert_album_to_48k(workspace: Path, tracker: ProgressTracker | None = None
             str(src),
             "-ar",
             str(target_sample_rate),
+            "-ac",
+            "2",
             "-acodec",
             codec,
         ]
