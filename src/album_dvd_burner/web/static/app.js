@@ -162,7 +162,7 @@ function renderAlbums() {
     const tags = [album.artist, album.album].filter(Boolean).join(" · ");
     const artworkUrl = downloadUrl(`/api/albums/${encodeURIComponent(album.name)}/artwork`);
     const cover = album.has_artwork
-      ? `<div class="album-cover"><img src="${escapeHtml(artworkUrl)}" alt="Cover for ${escapeHtml(album.name)}" loading="lazy" /></div>`
+      ? `<div class="album-cover"><img src="${escapeHtml(artworkUrl)}" alt="" loading="lazy" /></div>`
       : '<div class="album-cover missing" aria-label="No album cover">No cover</div>';
     const isSingleAlbum = state.albums.length === 1;
 
@@ -170,6 +170,7 @@ function renderAlbums() {
       <div class="album-row">
         <label class="album-card">
           <input type="checkbox" class="album-select${isSingleAlbum ? " hidden" : ""}" name="album" value="${escapeHtml(album.name)}" checked />
+          ${cover}
           <div class="album-meta">
             <div class="album-title">${escapeHtml(album.name)}</div>
             ${tags ? `<div class="album-tags">${escapeHtml(tags)}</div>` : ""}
@@ -178,7 +179,6 @@ function renderAlbums() {
               <div>${artwork}${converted}${output}</div>
             </div>
           </div>
-          ${cover}
         </label>
         <button type="button" class="btn ghost danger album-delete" data-name="${escapeHtml(album.name)}" title="Delete album">Delete</button>
       </div>
@@ -529,43 +529,156 @@ async function startJob(event) {
   startJobPolling(job.id, 1000);
 }
 
+function registerUploadedAlbum(result) {
+  document.getElementById("album-name").value = "";
+  showBanner(`Saved as: ${result.name} (${result.naming_source || "detected"})`, "success");
+  setTimeout(hideBanner, 5000);
+  // Insert uploaded album into UI immediately; remove any duplicate name first.
+  state.albums = state.albums.filter((a) => a.name !== result.name);
+  state.albums.unshift(result);
+  renderAlbums();
+  // Refresh in background to pick up any other changes.
+  refreshAlbums().catch(() => {});
+}
+
+async function uploadAlbumFiles(filesWithPaths, override, fallback) {
+  const form = new FormData();
+  if (override) form.append("album_name", override);
+  if (fallback) form.append("album_fallback", fallback);
+  for (const { file, relativePath } of filesWithPaths) {
+    form.append("files", file, relativePath);
+  }
+  return uploadWithProgress("/api/upload/folder", form);
+}
+
 async function uploadZip(file) {
   const override = document.getElementById("album-name").value.trim();
   const form = new FormData();
   form.append("file", file);
   if (override) form.append("album_name", override);
-
   const result = await uploadWithProgress("/api/upload/zip", form);
-  document.getElementById("album-name").value = "";
-  showBanner(`Saved as: ${result.name} (${result.naming_source || "detected"})`, "success");
-  setTimeout(hideBanner, 5000);
-  // Insert uploaded album into UI immediately for a more seamless experience
-  // Remove any existing entry with the same name then add to the front
-  state.albums = state.albums.filter((a) => a.name !== result.name);
-  state.albums.unshift(result);
-  renderAlbums();
-  // Also refresh in background to pick up any other changes
-  refreshAlbums().catch(() => {});
+  registerUploadedAlbum(result);
 }
 
 async function uploadFolder(files) {
   const override = document.getElementById("album-name").value.trim();
-  const form = new FormData();
-  if (override) form.append("album_name", override);
-  for (const file of files) {
-    const relative = file.webkitRelativePath.split("/").slice(1).join("/") || file.name;
-    form.append("files", file, relative);
+  const filesWithPaths = files.map((file) => {
+    const parts = (file.webkitRelativePath || "").split("/");
+    return {
+      file,
+      relativePath: parts.slice(1).join("/") || file.name,
+      folderName: parts[0] || null,
+    };
+  });
+  const fallback = filesWithPaths[0]?.folderName || null;
+  const result = await uploadAlbumFiles(filesWithPaths, override, fallback);
+  registerUploadedAlbum(result);
+}
+
+function readAllEntries(dirReader) {
+  return new Promise((resolve, reject) => {
+    const entries = [];
+    const readBatch = () => {
+      dirReader.readEntries((batch) => {
+        if (!batch.length) {
+          resolve(entries);
+          return;
+        }
+        entries.push(...batch);
+        readBatch();
+      }, reject);
+    };
+    readBatch();
+  });
+}
+
+async function directoryFiles(dirEntry) {
+  const files = [];
+  const walk = async (entry, prefix) => {
+    const reader = entry.createReader();
+    const children = await readAllEntries(reader);
+    for (const child of children) {
+      const rel = prefix ? `${prefix}/${child.name}` : child.name;
+      if (child.isFile) {
+        const file = await new Promise((resolve, reject) => child.file(resolve, reject));
+        files.push({ file, relativePath: rel });
+      } else if (child.isDirectory) {
+        await walk(child, rel);
+      }
+    }
+  };
+  await walk(dirEntry, "");
+  return files;
+}
+
+async function droppedJobs(items) {
+  const entries = [];
+  for (const item of items) {
+    const getEntry = item.webkitGetAsEntry || item.getAsEntry;
+    const entry = getEntry ? getEntry.call(item) : null;
+    if (entry) entries.push(entry);
+    else {
+      const file = item.getAsFile();
+      if (file) entries.push(file);
+    }
   }
 
-  const result = await uploadWithProgress("/api/upload/folder", form);
-  document.getElementById("album-name").value = "";
-  showBanner(`Saved as: ${result.name} (${result.naming_source || "detected"})`, "success");
-  setTimeout(hideBanner, 5000);
-  // Insert uploaded album into UI immediately
-  state.albums = state.albums.filter((a) => a.name !== result.name);
-  state.albums.unshift(result);
-  renderAlbums();
-  refreshAlbums().catch(() => {});
+  const jobs = [];
+  const looseFiles = [];
+  for (const entry of entries) {
+    if (entry instanceof File) {
+      if (entry.name.toLowerCase().endsWith(".zip")) jobs.push({ kind: "zip", file: entry });
+      else looseFiles.push({ file: entry, relativePath: entry.name });
+    } else if (entry.isDirectory) {
+      jobs.push({ kind: "folder", files: await directoryFiles(entry), fallback: entry.name });
+    } else if (entry.isFile) {
+      const file = await new Promise((resolve, reject) => entry.file(resolve, reject));
+      if (file.name.toLowerCase().endsWith(".zip")) jobs.push({ kind: "zip", file });
+      else looseFiles.push({ file, relativePath: file.name });
+    }
+  }
+  if (looseFiles.length) jobs.push({ kind: "folder", files: looseFiles, fallback: null });
+  return jobs;
+}
+
+async function processDroppedJobs(jobs) {
+  const errors = [];
+  for (const job of jobs) {
+    try {
+      const override = document.getElementById("album-name").value.trim();
+      if (job.kind === "zip") {
+        const form = new FormData();
+        form.append("file", job.file);
+        if (override) form.append("album_name", override);
+        registerUploadedAlbum(await uploadWithProgress("/api/upload/zip", form));
+      } else {
+        registerUploadedAlbum(await uploadAlbumFiles(job.files, override, job.fallback || null));
+      }
+    } catch (error) {
+      const label = job.kind === "zip"
+        ? job.file.name
+        : (job.fallback || job.files[0]?.relativePath?.split("/")[0] || "upload");
+      errors.push(`${label}: ${error.message}`);
+    }
+  }
+  if (errors.length) showBanner(`Upload finished with errors: ${errors.join("; ")}`, "error");
+}
+
+function bindDropZone() {
+  const zone = document.getElementById("drop-zone");
+  if (!zone) return;
+  zone.addEventListener("dragover", (event) => {
+    event.preventDefault();
+    zone.classList.add("dragover");
+  });
+  zone.addEventListener("dragleave", () => zone.classList.remove("dragover"));
+  zone.addEventListener("drop", async (event) => {
+    event.preventDefault();
+    zone.classList.remove("dragover");
+    const jobs = await droppedJobs(event.dataTransfer.items);
+    if (!jobs.length) return;
+    await processDroppedJobs(jobs);
+  });
 }
 
 async function deleteAlbum(name) {
@@ -591,12 +704,14 @@ function bindEvents() {
   });
 
   document.getElementById("zip-upload").addEventListener("change", async (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-    try {
-      await uploadZip(file);
-    } catch (error) {
-      alert(error.message);
+    const files = [...event.target.files];
+    if (!files.length) return;
+    for (const file of files) {
+      try {
+        await uploadZip(file);
+      } catch (error) {
+        alert(error.message);
+      }
     }
     event.target.value = "";
   });
@@ -623,6 +738,7 @@ function bindEvents() {
 
 async function init() {
   bindEvents();
+  bindDropZone();
   toggleRetentionOptions();
   try {
     await refreshHealth();

@@ -363,6 +363,7 @@ def create_app() -> FastAPI:
     async def upload_folder(
         files: list[UploadFile] = File(...),
         album_name: str | None = Form(default=None),
+        album_fallback: str | None = Form(default=None),
         settings: Settings = Depends(get_settings),
     ) -> dict:
         if not files:
@@ -388,11 +389,16 @@ def create_app() -> FastAPI:
             _require_staging_audio(dest)
 
             override = album_name.strip() if album_name and album_name.strip() else None
+            fallback = (
+                album_fallback.strip()
+                if album_fallback and album_fallback.strip()
+                else None
+            ) or folder_fallback
             workspace, _, naming_source = _finalize_upload(
                 settings,
                 dest,
                 override=override,
-                fallback=folder_fallback,
+                fallback=fallback,
             )
         except HTTPException:
             raise

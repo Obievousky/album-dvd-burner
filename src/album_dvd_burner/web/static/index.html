@@ -24,18 +24,18 @@
         <button class="btn ghost" id="refresh-albums">Refresh</button>
       </div>
 
-      <div class="upload-box">
-        <h3>Upload album</h3>
-        <p class="hint">Name is read from audio tags (<code>album</code> + <code>artist</code>). Override only if needed.</p>
+      <div class="upload-box" id="drop-zone">
+        <h3>Upload albums</h3>
+        <p class="hint">Drop multiple folders or ZIPs here — each becomes its own album. Name is read from audio tags, with the folder name as fallback.</p>
         <div class="upload-row">
           <input type="text" id="album-name" placeholder="Optional name override" />
           <label class="btn">
             Folder
-            <input type="file" id="folder-upload" webkitdirectory directory multiple hidden />
+            <input type="file" id="folder-upload" webkitdirectory directory hidden />
           </label>
           <label class="btn">
             ZIP
-            <input type="file" id="zip-upload" accept=".zip" hidden />
+            <input type="file" id="zip-upload" accept=".zip" multiple hidden />
           </label>
         </div>
         <div class="progress-block hidden" id="upload-progress-block">
