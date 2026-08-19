@@ -186,10 +186,25 @@ input[type="text"]:focus, select:focus {
 
 .album-row .album-card { flex: 1; }
 
-.album-row .album-rename,
-.album-row .album-delete {
-  align-self: center;
+.album-card .album-actions {
+  position: relative;
+  z-index: 2;
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
   flex-shrink: 0;
+}
+
+.album-actions .album-rename,
+.album-actions .album-delete {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-top: 0.3rem;
+  padding-bottom: 0.3rem;
+  background: rgba(17, 12, 15, 0.6);
 }
 
 .album-row .album-delete {
@@ -281,6 +296,17 @@ input[type="text"]:focus, select:focus {
   min-width: 0;
 }
 .album-title { font-weight: 600; }
+.album-title-edit {
+  width: 100%;
+  min-width: 0;
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 0.2rem 0.4rem;
+  font: inherit;
+  font-weight: 600;
+}
 .album-tags { color: var(--accent-soft); font-size: 0.82rem; margin-top: 0.15rem; }
 .album-details { color: var(--muted); font-size: 0.85rem; margin-top: 0.2rem; }
 

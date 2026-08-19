@@ -172,16 +172,18 @@ function renderAlbums() {
           <input type="checkbox" class="album-select${isSingleAlbum ? " hidden" : ""}" name="album" value="${escapeHtml(album.name)}" checked />
           ${cover}
           <div class="album-meta">
-            <div class="album-title">${escapeHtml(album.name)}</div>
+            <div class="album-title" data-name="${escapeHtml(album.name)}" title="Double-click to rename">${escapeHtml(album.name)}</div>
             ${tags ? `<div class="album-tags">${escapeHtml(tags)}</div>` : ""}
             <div class="album-details">
               ${album.track_count} tracks · ${escapeHtml(audio)}
               <div>${artwork}${converted}${output}</div>
             </div>
           </div>
+          <div class="album-actions">
+            <button type="button" class="btn ghost album-rename" data-name="${escapeHtml(album.name)}" title="Rename album">Rename</button>
+            <button type="button" class="btn ghost danger album-delete" data-name="${escapeHtml(album.name)}" title="Delete album">Delete</button>
+          </div>
         </label>
-        <button type="button" class="btn ghost album-rename" data-name="${escapeHtml(album.name)}" title="Rename album">Rename</button>
-        <button type="button" class="btn ghost danger album-delete" data-name="${escapeHtml(album.name)}" title="Delete album">Delete</button>
       </div>
     `;
   }).join("");
@@ -694,16 +696,71 @@ async function deleteAlbum(name) {
   await refreshAlbums();
 }
 
-async function renameAlbum(name) {
-  const newName = prompt("New album name", name);
-  if (newName == null) return;
+async function performRename(oldName, newName) {
   const trimmed = newName.trim();
-  if (!trimmed || trimmed === name) return;
-  await api(`/api/albums/${encodeURIComponent(name)}`, {
+  if (!trimmed || trimmed === oldName) return;
+  await api(`/api/albums/${encodeURIComponent(oldName)}`, {
     method: "PATCH",
     body: JSON.stringify({ name: trimmed }),
   });
   await refreshAlbums();
+}
+
+async function renameAlbum(name) {
+  const newName = prompt("New album name", name);
+  if (newName == null) return;
+  await performRename(name, newName);
+}
+
+function beginRenameTitle(titleEl) {
+  if (titleEl.querySelector("input")) return;
+  const currentName = titleEl.dataset.name;
+  const input = document.createElement("input");
+  input.type = "text";
+  input.value = currentName;
+  input.className = "album-title-edit";
+  input.setAttribute("aria-label", "Album name");
+  titleEl.textContent = "";
+  titleEl.appendChild(input);
+  input.focus();
+  input.select();
+
+  let finished = false;
+  let cancelled = false;
+
+  const finish = async () => {
+    if (finished) return;
+    finished = true;
+    const newName = input.value.trim();
+    if (cancelled || !newName || newName === currentName) {
+      await refreshAlbums();
+      return;
+    }
+    try {
+      await performRename(currentName, newName);
+    } catch (error) {
+      alert(error.message);
+      await refreshAlbums();
+    }
+  };
+
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      input.blur();
+    } else if (event.key === "Escape") {
+      cancelled = true;
+      event.preventDefault();
+      input.blur();
+    }
+  });
+
+  input.addEventListener("blur", finish);
+
+  input.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+  });
 }
 
 function bindEvents() {
@@ -732,6 +789,14 @@ function bindEvents() {
     } catch (error) {
       alert(error.message);
     }
+  });
+
+  document.getElementById("album-list").addEventListener("dblclick", (event) => {
+    const title = event.target.closest(".album-title");
+    if (!title) return;
+    event.preventDefault();
+    event.stopPropagation();
+    beginRenameTitle(title);
   });
 
   document.getElementById("zip-upload").addEventListener("change", async (event) => {
