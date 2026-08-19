@@ -37,7 +37,7 @@ jobs:
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
             # branch names => :main
             type=ref,event=branch
-            # git tags v0.4.1 => :0.4.1, :0.4
+            # git tags v0.4.2 => :0.4.2, :0.4
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             # every commit => :sha-<short>
