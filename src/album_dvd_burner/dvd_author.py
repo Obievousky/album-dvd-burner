@@ -5,7 +5,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 
-from .artwork import prepare_artwork
+from .artwork import create_placeholder_artwork, prepare_artwork
 from .audio import AudioInfo, prepare_album_audio
 from .progress import ProgressTracker
 from .utils import run
@@ -17,7 +17,7 @@ class AlbumTitle:
     source_folder: Path
     work_dir: Path
     tracks: list[Path]
-    artwork: Path
+    artwork: Path | None
     audio_info: AudioInfo
 
 
@@ -32,7 +32,13 @@ def prepare_album(workspace: Path, tracker: ProgressTracker | None = None) -> Al
 
     artwork = prepare_artwork(workspace)
 
-    if tracker:
+    if artwork is None:
+        if tracker:
+            tracker.log(
+                "preparing",
+                f"No cover image found for {workspace.name}; using black background",
+            )
+    elif tracker:
         tracker.log("preparing", f"Artwork ready: {artwork.name}")
 
     return AlbumTitle(
@@ -60,7 +66,7 @@ def _create_track_vob(
     """Create a VOB for a single track.
 
     Preserve highest reasonable audio quality: if the album audio is 24-bit (or higher)
-    encode audio as 24-bit PCM; otherwise use 16-bit. Use soxr resampler for best quality.
+    encode audio as 24-bit DVD PCM (pcm_dvd); otherwise use 16-bit. Use soxr resampler for best quality.
     """
     vob_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -74,7 +80,7 @@ def _create_track_vob(
     if album_audio_info is not None:
         target_samplerate = 96000 if album_audio_info.sample_rate > 48000 else 48000
         if album_audio_info.bit_depth >= 24:
-            target_codec = "pcm_s24be"
+            target_codec = "pcm_dvd"
         else:
             target_codec = "pcm_s16be"
 
@@ -174,10 +180,12 @@ def _encode_vob_task(
     track: Path,
     work_root: Path,
     standard: str,
+    placeholder_artwork: Path | None = None,
 ) -> tuple[Path, str]:
     vob_name = f"title{album_index:02d}_track{track_index:02d}.vob"
     vob_path = work_root / vob_name
-    _create_track_vob(track, album.artwork, vob_path, standard=standard, album_audio_info=album.audio_info)
+    artwork = album.artwork if album.artwork is not None else placeholder_artwork
+    _create_track_vob(track, artwork, vob_path, standard=standard, album_audio_info=album.audio_info)
     return track, vob_name
 
 
@@ -198,6 +206,9 @@ def author_dvd(
     if work_root.exists():
         shutil.rmtree(work_root)
     work_root.mkdir(parents=True, exist_ok=True)
+
+    # Fallback image used for albums without cover art.
+    placeholder_artwork = create_placeholder_artwork(work_root / ".black.jpg")
 
     try:
         total_tracks = sum(len(album.tracks) for album in albums)
@@ -226,6 +237,7 @@ def author_dvd(
                     track,
                     work_root,
                     standard,
+                    placeholder_artwork,
                 ): (album, track, album_index, track_index)
                 for album_index, track_index, album, track in tasks
             }

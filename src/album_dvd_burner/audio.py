@@ -48,9 +48,9 @@ def convert_album_to_48k(workspace: Path, tracker: ProgressTracker | None = None
 
     # Pick the highest DVD-safe quality present across the album: 96 kHz when any
     # source is already above 48 kHz, otherwise 48 kHz; 24-bit when any source is
-    # 24-bit (or higher), otherwise 16-bit.
+    # above 16-bit (e.g. 20- or 24-bit), otherwise 16-bit.
     target_sample_rate = 96000 if any(info.sample_rate > 48000 for info in infos) else 48000
-    target_bit_depth = 24 if any(info.bit_depth >= 24 for info in infos) else 16
+    target_bit_depth = 24 if any(info.bit_depth > 16 for info in infos) else 16
     codec = "pcm_s24le" if target_bit_depth == 24 else "pcm_s16le"
 
     # Skip conversion only when every track is already homogeneous DVD-safe stereo.
@@ -107,7 +107,8 @@ def convert_album_to_48k(workspace: Path, tracker: ProgressTracker | None = None
                 f"{target_sample_rate // 1000} kHz / {target_bit_depth}-bit stereo: {src.name}",
             )
 
-        # Use high-quality resampler (soxr) when available
+        # Use the high-quality soxr resampler (when available) for the actual rate
+        # conversion, and force stereo output.
         cmd = [
             "ffmpeg",
             "-y",
@@ -116,15 +117,12 @@ def convert_album_to_48k(workspace: Path, tracker: ProgressTracker | None = None
             "error",
             "-i",
             str(src),
-            "-ar",
-            str(target_sample_rate),
-            "-ac",
-            "2",
+            "-af",
+            f"aresample=osr={target_sample_rate}:ochl=stereo:resampler=soxr",
             "-acodec",
             codec,
+            str(dst),
         ]
-        cmd.extend(["-af", "aresample=resampler=soxr"])
-        cmd.append(str(dst))
 
         run(cmd)
 

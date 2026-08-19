@@ -31,8 +31,9 @@ def test_mixed_bit_depths_are_normalized_to_highest(monkeypatch, tmp_path):
     assert result == workspace / "16-48"
     assert len(commands) == 2
     for command in commands:
-        assert command[command.index("-ar") + 1] == "48000"
-        assert command[command.index("-ac") + 1] == "2"
+        af = command[command.index("-af") + 1]
+        assert "osr=48000" in af
+        assert "ochl=stereo" in af
         assert command[command.index("-acodec") + 1] == "pcm_s24le"
 
 
@@ -71,7 +72,7 @@ def test_mono_tracks_are_forced_to_stereo(monkeypatch, tmp_path):
     assert result == workspace / "16-48"
     assert len(commands) == 1
     command = commands[0]
-    assert command[command.index("-ac") + 1] == "2"
+    assert "ochl=stereo" in command[command.index("-af") + 1]
     assert command[command.index("-acodec") + 1] == "pcm_s16le"
 
 
@@ -101,3 +102,24 @@ def test_existing_matching_conversion_is_reused(monkeypatch, tmp_path):
     assert result == converted
     assert len(commands) == 1
     assert commands[0][commands[0].index("-i") + 1] == str(track2)
+
+
+def test_twenty_bit_source_targets_24bit(monkeypatch, tmp_path):
+    workspace, source = _make_workspace(tmp_path)
+    files = [source / "01.flac"]
+
+    commands: list[list[str]] = []
+    monkeypatch.setattr("album_dvd_burner.audio.list_audio_files", lambda *a, **k: files)
+    monkeypatch.setattr(
+        "album_dvd_burner.audio.probe_audio",
+        lambda path: AudioInfo(96000, 20, 2, "flac"),
+    )
+    monkeypatch.setattr("album_dvd_burner.audio.run", lambda cmd, **k: commands.append(cmd))
+
+    result = convert_album_to_48k(workspace)
+
+    assert result == workspace / "16-48"
+    assert len(commands) == 1
+    command = commands[0]
+    assert command[command.index("-acodec") + 1] == "pcm_s24le"
+    assert "osr=96000" in command[command.index("-af") + 1]

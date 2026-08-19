@@ -547,7 +547,12 @@ async function startJob(event) {
 
 function registerUploadedAlbum(result) {
   document.getElementById("album-name").value = "";
-  showBanner(`Saved as: ${result.name} (${result.naming_source || "detected"})`, "success");
+  const saved = `Saved as: ${result.name} (${result.naming_source || "detected"})`;
+  if (result.warning) {
+    showBanner(`${saved} — ${result.warning}`, "warn");
+  } else {
+    showBanner(saved, "success");
+  }
   setTimeout(hideBanner, 5000);
   // Insert uploaded album into UI immediately; remove any duplicate name first.
   state.albums = state.albums.filter((a) => a.name !== result.name);

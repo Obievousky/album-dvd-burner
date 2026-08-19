@@ -147,6 +147,14 @@ def _scan_album(workspace: Path) -> dict:
     }
 
 
+def _upload_response(workspace: Path, naming_source: str) -> dict:
+    result = _scan_album(workspace)
+    result["naming_source"] = naming_source
+    if not result["has_artwork"]:
+        result["warning"] = "No cover image found; this album will be authored without a cover."
+    return result
+
+
 def _staging_source_dir(settings: Settings) -> Path:
     staging = settings.data_root / f".staging-{uuid.uuid4().hex}"
     source = staging / SOURCE_DIRNAME
@@ -406,9 +414,7 @@ def create_app() -> FastAPI:
             _cleanup_staging(dest)
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-        result = _scan_album(workspace)
-        result["naming_source"] = naming_source
-        return result
+        return _upload_response(workspace, naming_source)
 
     @app.post("/api/upload/folder", dependencies=[Depends(verify_api_key)])
     async def upload_folder(
@@ -457,9 +463,7 @@ def create_app() -> FastAPI:
             _cleanup_staging(dest)
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-        result = _scan_album(workspace)
-        result["naming_source"] = naming_source
-        return result
+        return _upload_response(workspace, naming_source)
 
     @app.patch("/api/albums/{album_name}", dependencies=[Depends(verify_api_key)])
     def rename_album(

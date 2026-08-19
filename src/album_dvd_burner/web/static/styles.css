@@ -72,6 +72,12 @@ h3 { margin: 0 0 0.75rem; font-size: 0.95rem; color: var(--muted); }
   color: #dff7ea;
 }
 
+.api-banner.warn {
+  border: 1px solid rgba(232, 201, 138, 0.45);
+  background: rgba(92, 72, 28, 0.25);
+  color: #f7e6c4;
+}
+
 .empty-row {
   color: var(--muted);
   text-align: center;

@@ -32,12 +32,16 @@ def resize_artwork(source: Path, dest: Path, width: int = 720, height: int = 480
     return dest
 
 
-def prepare_artwork(workspace: Path) -> Path:
+def prepare_artwork(workspace: Path) -> Path | None:
     source = find_artwork(workspace)
     if source is None:
-        raise ValueError(
-            f"No artwork found in {workspace}. Add cover.jpg or similar image file."
-        )
+        return None
 
     dest = workspace / PROCESSED_ARTWORK
     return resize_artwork(source, dest)
+
+
+def create_placeholder_artwork(dest: Path, width: int = 720, height: int = 480) -> Path:
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    Image.new("RGB", (width, height), (0, 0, 0)).save(dest, format="JPEG", quality=95)
+    return dest
