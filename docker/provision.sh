@@ -30,6 +30,8 @@ if [[ "$data_root" != /* ]]; then
     data_root="$project_root/$data_root"
 fi
 
+data_root="$(realpath -m "$data_root")"
+
 if [[ "$EUID" -eq 0 ]]; then
     mkdir -p "$data_root"
     chown "$app_uid:$app_gid" "$data_root"
