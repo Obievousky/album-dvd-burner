@@ -18,17 +18,20 @@ Multi-album burns output to `DATA_ROOT/_jobs/R.P. No. XXX - RE/output/`.
 
 Hidden runtime folders (auto-managed): `.jobs/`, `.retention-queue/`, `.staging-*`.
 
-## Quick start
+## Quick start (local development)
 
 ```bash
-cp .env.example .env
 ./docker/provision.sh
-docker compose up -d --build
+docker compose -f compose.develop.yml up -d --build
 ```
 
 The provisioning script creates and assigns the data directory to the non-root app
-account. Set `DVD_GID` in `.env` to the numeric group of your optical device before
-burning. Open **http://localhost:8080**.
+account. `compose.develop.yml` builds the image from source and exposes Postgres on
+port 5432 for development only. Set `DVD_GID` in `.env` to the numeric group of your
+optical device before burning. Open **http://localhost:8080**.
+
+For a server deployment with the prebuilt image, use `compose.yml` — see
+[docs/setup.md](docs/setup.md) or [docs/arcane.md](docs/arcane.md).
 
 If `WEB_API_KEY` is set in `.env`, append `?key=YOUR_KEY` to the URL (all API routes except `/api/health` require it).
 
@@ -80,7 +83,7 @@ Retention options are configured in the web UI; CLI `process` uses default reten
 | `WEB_API_KEY` | _(empty)_ | Protects all `/api/*` routes except `/api/health`; use `?key=` in the URL |
 | `RETENTION_DELAY_HOURS` | `3` | Grace period before deleting unchecked files (`0` = immediate) |
 
-Local `docker-compose.yml` exposes Postgres on port 5432 for development only.
+`compose.develop.yml` exposes Postgres on port 5432 for development only; `compose.yml` (production) keeps Postgres internal-only.
 
 ## Development
 

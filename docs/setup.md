@@ -24,10 +24,10 @@ DVD_DEVICE=/dev/sr0
 
 ```bash
 ./docker/provision.sh
-docker compose up -d --build
+docker compose up -d
 ```
 
-This automatically creates Postgres database `album_dvd` and the `burns` table on first boot.
+`compose.yml` pulls the prebuilt image (set `APP_VERSION` to pin a release, or leave it `latest`). It automatically creates Postgres database `album_dvd` and the `burns` table on first boot.
 
 Verify:
 
@@ -54,7 +54,7 @@ Or reset Postgres entirely:
 
 ```bash
 docker compose down -v
-docker compose up -d --build
+docker compose up -d
 ```
 
 Album files in `/opt/album-dvd-burner/` are not affected by a Postgres reset.
