@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "album-dvd-burner"
-version = "0.5.0"
+version = "0.5.1"
 description = "Convert albums to Lplex-style audio DVDs, log burns to PostgreSQL, and burn discs"
 readme = "README.md"
 requires-python = ">=3.11"
