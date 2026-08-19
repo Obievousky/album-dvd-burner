@@ -102,6 +102,12 @@ h3 { margin: 0 0 0.75rem; font-size: 0.95rem; color: var(--muted); }
   margin-bottom: 1rem;
 }
 
+.panel-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
 .burn-code {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   color: var(--accent);
@@ -184,7 +190,38 @@ input[type="text"]:focus, select:focus {
   align-items: stretch;
 }
 
+.album-row.dragging {
+  opacity: 0.45;
+}
+
+.album-row.drop-before {
+  box-shadow: inset 0 2px 0 var(--accent);
+}
+
+.album-row.drop-after {
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
 .album-row .album-card { flex: 1; }
+
+.drag-handle {
+  position: relative;
+  z-index: 2;
+  flex-shrink: 0;
+  cursor: grab;
+  color: var(--muted);
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0.3rem 0.1rem;
+  letter-spacing: -0.25em;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+  color: var(--accent);
+}
 
 .album-card .album-actions {
   position: relative;

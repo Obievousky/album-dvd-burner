@@ -8,6 +8,8 @@ const state = {
   jobTerminalHandled: false,
   deletionCountdownTimer: null,
   currentJob: null,
+  deleteAfterBurn: false,
+  dragIndex: null,
 };
 
 const apiKey = new URLSearchParams(window.location.search).get("key") || "";
@@ -169,6 +171,7 @@ function renderAlbums() {
     return `
       <div class="album-row">
         <label class="album-card">
+          <span class="drag-handle" title="Drag to reorder">⋮⋮</span>
           <input type="checkbox" class="album-select${isSingleAlbum ? " hidden" : ""}" name="album" value="${escapeHtml(album.name)}" checked />
           ${cover}
           <div class="album-meta">
@@ -187,6 +190,7 @@ function renderAlbums() {
       </div>
     `;
   }).join("");
+  setupAlbumDrag();
 }
 
 function renderBurnHistory(rows) {
@@ -429,6 +433,14 @@ async function pollJob(jobId) {
         state.activeJobId = null;
         persistActiveJob(null);
         document.getElementById("start-job").disabled = false;
+        if (job.status === "completed" && state.deleteAfterBurn) {
+          state.deleteAfterBurn = false;
+          try {
+            await api("/api/albums", { method: "DELETE" });
+          } catch (error) {
+            showBanner(`Failed to delete albums after burn: ${error.message}`, "error");
+          }
+        }
         await refreshBurns();
         await refreshAlbums();
         await refreshNextBurnCode();
@@ -509,6 +521,7 @@ async function startJob(event) {
   button.disabled = true;
   setProgress("job", 0, "Starting job…");
   state.jobTerminalHandled = false;
+  state.deleteAfterBurn = document.getElementById("delete-after-burn").checked;
   stopJobPolling();
 
   const job = await api("/api/jobs", {
@@ -696,6 +709,67 @@ async function deleteAlbum(name) {
   await refreshAlbums();
 }
 
+async function deleteAllAlbums() {
+  if (!state.albums.length) return;
+  if (!confirm(`Delete all ${state.albums.length} album(s) and all their files?`)) return;
+  const result = await api("/api/albums", { method: "DELETE" });
+  await refreshAlbums();
+  if (result.skipped?.length) {
+    showBanner(`Skipped albums in the running job: ${result.skipped.join(", ")}`, "error");
+  } else {
+    showBanner("All albums deleted.", "success");
+    setTimeout(hideBanner, 5000);
+  }
+}
+
+async function saveAlbumOrder() {
+  await api("/api/albums/order", {
+    method: "PUT",
+    body: JSON.stringify({ names: state.albums.map((album) => album.name) }),
+  }).catch(() => {});
+}
+
+function setupAlbumDrag() {
+  const list = document.getElementById("album-list");
+  if (!list) return;
+
+  list.querySelectorAll(".album-row").forEach((row, index) => {
+    const handle = row.querySelector(".drag-handle");
+    if (!handle) return;
+    handle.setAttribute("draggable", "true");
+
+    handle.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+    });
+
+    handle.addEventListener("dragstart", (event) => {
+      state.dragIndex = index;
+      row.classList.add("dragging");
+      if (event.dataTransfer) {
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", String(index));
+        try {
+          event.dataTransfer.setDragImage(row, 20, 20);
+        } catch (_) {
+          /* ignore */
+        }
+      }
+    });
+
+    handle.addEventListener("dragend", () => {
+      row.classList.remove("dragging");
+      list.querySelectorAll(".album-row").forEach((r) => r.classList.remove("drop-before", "drop-after"));
+      state.dragIndex = null;
+    });
+  });
+}
+
+function dropIndicatorClass(row, event) {
+  const rect = row.getBoundingClientRect();
+  return event.clientY < rect.top + rect.height / 2 ? "drop-before" : "drop-after";
+}
+
 async function performRename(oldName, newName) {
   const trimmed = newName.trim();
   if (!trimmed || trimmed === oldName) return;
@@ -766,6 +840,13 @@ function beginRenameTitle(titleEl) {
 function bindEvents() {
   document.getElementById("refresh-albums").addEventListener("click", refreshAlbums);
   document.getElementById("refresh-burns")?.addEventListener("click", refreshBurns);
+  document.getElementById("delete-all-albums").addEventListener("click", async () => {
+    try {
+      await deleteAllAlbums();
+    } catch (error) {
+      alert(error.message);
+    }
+  });
   document.getElementById("persistent").addEventListener("change", toggleRetentionOptions);
   document.getElementById("album-list").addEventListener("click", async (event) => {
     const renameButton = event.target.closest(".album-rename");
@@ -797,6 +878,36 @@ function bindEvents() {
     event.preventDefault();
     event.stopPropagation();
     beginRenameTitle(title);
+  });
+
+  const albumList = document.getElementById("album-list");
+  albumList.addEventListener("dragover", (event) => {
+    if (state.dragIndex === null) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+    const row = event.target.closest(".album-row");
+    if (!row) return;
+    albumList.querySelectorAll(".album-row").forEach((r) => r.classList.remove("drop-before", "drop-after"));
+    row.classList.add(dropIndicatorClass(row, event));
+  });
+
+  albumList.addEventListener("drop", (event) => {
+    event.preventDefault();
+    if (state.dragIndex === null) return;
+    const row = event.target.closest(".album-row");
+    if (!row) return;
+
+    const rows = [...albumList.querySelectorAll(".album-row")];
+    const targetIndex = rows.indexOf(row);
+    let insertIndex = targetIndex + (dropIndicatorClass(row, event) === "drop-before" ? 0 : 1);
+    if (state.dragIndex < insertIndex) insertIndex -= 1;
+
+    const [moved] = state.albums.splice(state.dragIndex, 1);
+    state.albums.splice(insertIndex, 0, moved);
+
+    state.dragIndex = null;
+    renderAlbums();
+    saveAlbumOrder();
   });
 
   document.getElementById("zip-upload").addEventListener("change", async (event) => {

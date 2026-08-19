@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import json
 import os
 import shutil
 import uuid
@@ -37,6 +38,27 @@ from .downloads import job_artifact_response, job_log_response, list_job_outputs
 
 STATIC_DIR = Path(__file__).parent / "static"
 
+ALBUM_ORDER_FILENAME = ".album-order.json"
+
+
+def _album_order_path(settings: Settings) -> Path:
+    return settings.data_root / ALBUM_ORDER_FILENAME
+
+
+def _load_album_order(settings: Settings) -> list[str]:
+    path = _album_order_path(settings)
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    if not isinstance(data, list):
+        return []
+    return [str(name) for name in data]
+
+
+def _save_album_order(settings: Settings, names: list[str]) -> None:
+    _album_order_path(settings).write_text(json.dumps(names, indent=2), encoding="utf-8")
+
 
 class RetentionRequest(BaseModel):
     persistent: bool = True
@@ -49,6 +71,10 @@ class RetentionRequest(BaseModel):
 
 class RenameAlbumRequest(BaseModel):
     name: str = Field(min_length=1)
+
+
+class OrderRequest(BaseModel):
+    names: list[str] = Field(default_factory=list)
 
 
 class CreateJobRequest(BaseModel):
@@ -222,7 +248,27 @@ def create_app() -> FastAPI:
 
     @app.get("/api/albums", dependencies=[Depends(verify_api_key)])
     def get_albums(settings: Settings = Depends(get_settings)) -> list[dict]:
-        return [_scan_album(path) for path in list_album_workspaces(settings.data_root)]
+        workspaces = list_album_workspaces(settings.data_root)
+        order = {name: index for index, name in enumerate(_load_album_order(settings))}
+        workspaces.sort(key=lambda path: (order.get(path.name, len(order)), path.name))
+        return [_scan_album(path) for path in workspaces]
+
+    @app.put("/api/albums/order", dependencies=[Depends(verify_api_key)])
+    def set_album_order(
+        body: OrderRequest,
+        settings: Settings = Depends(get_settings),
+    ) -> dict:
+        existing = {path.name for path in list_album_workspaces(settings.data_root)}
+        names: list[str] = []
+        seen: set[str] = set()
+        for name in body.names:
+            if name in existing and name not in seen:
+                names.append(name)
+                seen.add(name)
+        for name in sorted(existing - seen):
+            names.append(name)
+        _save_album_order(settings, names)
+        return {"order": names}
 
     @app.get("/api/albums/{album_name}/artwork", dependencies=[Depends(verify_api_key)])
     def get_album_artwork(
@@ -445,6 +491,22 @@ def create_app() -> FastAPI:
 
         workspace.rename(target)
         return _scan_album(target)
+
+    @app.delete("/api/albums", dependencies=[Depends(verify_api_key)])
+    def delete_all_albums(settings: Settings = Depends(get_settings)) -> dict:
+        running = job_manager.running_job()
+        running_names = set(running.album_names) if running else set()
+
+        deleted: list[str] = []
+        skipped: list[str] = []
+        for workspace in list_album_workspaces(settings.data_root):
+            if workspace.name in running_names:
+                skipped.append(workspace.name)
+                continue
+            shutil.rmtree(workspace)
+            deleted.append(workspace.name)
+
+        return {"deleted": deleted, "skipped": skipped}
 
     @app.delete("/api/albums/{album_name}", dependencies=[Depends(verify_api_key)])
     def delete_album(album_name: str, settings: Settings = Depends(get_settings)) -> dict:

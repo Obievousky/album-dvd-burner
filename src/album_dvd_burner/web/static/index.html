@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Album DVD Burner</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
   <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
@@ -21,7 +22,10 @@
     <section class="panel">
       <div class="panel-header">
         <h2>Albums</h2>
-        <button class="btn ghost" id="refresh-albums">Refresh</button>
+        <div class="panel-actions">
+          <button class="btn ghost danger" id="delete-all-albums">Delete all</button>
+          <button class="btn ghost" id="refresh-albums">Refresh</button>
+        </div>
       </div>
 
       <div class="upload-box" id="drop-zone">
@@ -70,6 +74,11 @@
         <label class="checkbox">
           <input type="checkbox" id="eject-after-burn" />
           Eject tray after burn
+        </label>
+
+        <label class="checkbox">
+          <input type="checkbox" id="delete-after-burn" />
+          Delete all albums after burn
         </label>
 
         <fieldset class="retention-box">
