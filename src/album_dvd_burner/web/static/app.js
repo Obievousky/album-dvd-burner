@@ -164,12 +164,12 @@ function renderAlbums() {
     const cover = album.has_artwork
       ? `<div class="album-cover"><img src="${escapeHtml(artworkUrl)}" alt="Cover for ${escapeHtml(album.name)}" loading="lazy" /></div>`
       : '<div class="album-cover missing" aria-label="No album cover">No cover</div>';
+    const isSingleAlbum = state.albums.length === 1;
 
     return `
       <div class="album-row">
         <label class="album-card">
-          ${cover}
-          <input type="checkbox" name="album" value="${escapeHtml(album.name)}" />
+          <input type="checkbox" class="album-select${isSingleAlbum ? " hidden" : ""}" name="album" value="${escapeHtml(album.name)}" checked />
           <div class="album-meta">
             <div class="album-title">${escapeHtml(album.name)}</div>
             ${tags ? `<div class="album-tags">${escapeHtml(tags)}</div>` : ""}
@@ -178,6 +178,7 @@ function renderAlbums() {
               <div>${artwork}${converted}${output}</div>
             </div>
           </div>
+          ${cover}
         </label>
         <button type="button" class="btn ghost danger album-delete" data-name="${escapeHtml(album.name)}" title="Delete album">Delete</button>
       </div>

@@ -210,6 +210,10 @@ input[type="text"]:focus, select:focus {
 
 .album-card input { margin-top: 0.2rem; }
 
+.album-card input.album-select.hidden {
+  display: none;
+}
+
 .album-cover {
   width: 68px;
   height: 68px;
