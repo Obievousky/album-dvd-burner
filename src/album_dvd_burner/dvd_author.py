@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .artwork import create_placeholder_artwork, prepare_artwork
-from .audio import AudioInfo, prepare_album_audio
+from .audio import AudioInfo, prepare_album_audio, probe_duration
 from .progress import ProgressTracker
 from .utils import run
 
@@ -51,10 +51,6 @@ def prepare_album(workspace: Path, tracker: ProgressTracker | None = None) -> Al
     )
 
 
-def _ffmpeg_target(standard: str) -> str:
-    return "ntsc-dvd" if standard == "ntsc" else "pal-dvd"
-
-
 def _create_track_vob(
     track: Path,
     artwork: Path,
@@ -66,7 +62,12 @@ def _create_track_vob(
     """Create a VOB for a single track.
 
     Preserve highest reasonable audio quality: if the album audio is 24-bit (or higher)
-    encode audio as 24-bit DVD PCM (pcm_dvd); otherwise use 16-bit. Use soxr resampler for best quality.
+    encode audio as 24-bit DVD PCM; otherwise use 16-bit.
+
+    The still image is encoded to a DVD-compliant MPEG-2 elementary stream and then
+    multiplexed with raw LPCM audio using mplex (DVD format). mplex produces VOBs that
+    dvdauthor 0.7.2 can parse reliably, unlike ffmpeg's own ``-f vob`` muxer whose
+    system headers dvdauthor fails to recognise ("no VOBUs found").
     """
     vob_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -76,13 +77,10 @@ def _create_track_vob(
     # Keep the highest DVD-safe audio quality available: 96 kHz whenever the source is
     # above 48 kHz, otherwise 48 kHz, while preserving 24-bit PCM when present.
     target_samplerate = 48000
-    target_codec = "pcm_s16be"
+    target_bits = 16
     if album_audio_info is not None:
         target_samplerate = 96000 if album_audio_info.sample_rate > 48000 else 48000
-        if album_audio_info.bit_depth >= 24:
-            target_codec = "pcm_dvd"
-        else:
-            target_codec = "pcm_s16be"
+        target_bits = 24 if album_audio_info.bit_depth >= 24 else 16
 
     # Determine display aspect from artwork dimensions to avoid dvdauthor warnings.
     # Auto-detect between 4:3 and 16:9 based on artwork aspect ratio; fallback to 4:3.
@@ -101,63 +99,104 @@ def _create_track_vob(
         display_aspect = "4:3"
 
     if standard == "ntsc":
-        # NTSC DVD resolution is 720x480
+        # NTSC DVD resolution is 720x480 at 30000/1001 fps
         width, height = 720, 480
-        if display_aspect == "4:3":
-            sar = "8/9"
-        else:
-            sar = "32/27"
+        fps = "30000/1001"
+        gop = 18
+        sar = "8/9" if display_aspect == "4:3" else "32/27"
     else:
-        # PAL DVD resolution is 720x576
+        # PAL DVD resolution is 720x576 at 25 fps
         width, height = 720, 576
-        if display_aspect == "4:3":
-            sar = "8/7"
-        else:
-            sar = "64/45"
+        fps = "25"
+        gop = 15
+        sar = "8/7" if display_aspect == "4:3" else "64/45"
 
-    vf = f"scale={width}:{height},setsar={sar}"
+    m2v_path = vob_path.with_suffix(".m2v")
+    lpcm_path = vob_path.with_suffix(".lpcm")
+    duration = probe_duration(track)
 
-    # Build ffmpeg command using soxr resampler and preserve bit depth when possible
-    cmd = [
-        "ffmpeg",
-        "-y",
-        "-hide_banner",
-        "-loglevel",
-        "error",
-        "-loop",
-        "1",
-        "-i",
-        str(artwork),
-        "-i",
-        str(track),
-        # The target supplies the DVD container, frame rate, and mux parameters.
-        # Keep it before explicit codecs so the quality choices below win.
-        "-target",
-        _ffmpeg_target(standard),
-        "-c:v",
-        "mpeg2video",
-        "-q:v",
-        "4",
-        # Let ffmpeg choose threads optimally
-        "-threads",
-        "0",
-        # Ensure video dimensions and pixel aspect ratio are explicit to satisfy dvdauthor
-        "-vf",
-        vf,
-        # audio: use soxr resampler for highest quality
-        "-af",
-        "aresample=resampler=soxr",
-        "-ar",
-        str(target_samplerate),
-        "-c:a",
-        target_codec,
-        "-shortest",
-        "-f",
-        "vob",
-        str(vob_path),
-    ]
+    # 1) Encode the still image into a DVD-compliant MPEG-2 video elementary stream.
+    run(
+        [
+            "ffmpeg",
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-loop",
+            "1",
+            "-i",
+            str(artwork),
+            "-t",
+            f"{duration:.6f}",
+            "-r",
+            fps,
+            "-c:v",
+            "mpeg2video",
+            "-q:v",
+            "4",
+            # DVD VBV constraints keep the stream player-safe.
+            "-maxrate",
+            "9000000",
+            "-bufsize",
+            "1835008",
+            "-g",
+            str(gop),
+            "-bf",
+            "2",
+            "-threads",
+            "0",
+            "-vf",
+            f"scale={width}:{height},setsar={sar}",
+            "-f",
+            "mpeg2video",
+            str(m2v_path),
+        ]
+    )
 
-    run(cmd)
+    # 2) Encode audio to raw big-endian PCM for mplex LPCM multiplexing.
+    pcm_codec = "pcm_s16be" if target_bits == 16 else "pcm_s24be"
+    pcm_format = "s16be" if target_bits == 16 else "s24be"
+    run(
+        [
+            "ffmpeg",
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-i",
+            str(track),
+            "-ar",
+            str(target_samplerate),
+            "-ac",
+            "2",
+            "-c:a",
+            pcm_codec,
+            "-f",
+            pcm_format,
+            str(lpcm_path),
+        ]
+    )
+
+    # 3) Multiplex video + LPCM audio into a DVD VOB. ``-f 8`` (DVD with NAV
+    # sectors) is required so dvdauthor can detect the first VOBU.
+    try:
+        run(
+            [
+                "mplex",
+                "-f",
+                "8",
+                "-L",
+                f"{target_samplerate}:2:{target_bits}",
+                "-o",
+                str(vob_path),
+                str(m2v_path),
+                str(lpcm_path),
+            ]
+        )
+    finally:
+        m2v_path.unlink(missing_ok=True)
+        lpcm_path.unlink(missing_ok=True)
 
 
 def _build_dvdauthor_xml(albums: list[AlbumTitle], vob_map: dict[Path, str], standard: str) -> str:

@@ -15,6 +15,42 @@ class AudioInfo:
     codec: str
 
 
+def probe_duration(path: Path) -> float:
+    """Return the duration of an audio file in seconds."""
+    output = run_capture(
+        [
+            "ffprobe",
+            "-v",
+            "quiet",
+            "-print_format",
+            "json",
+            "-show_format",
+            str(path),
+        ]
+    )
+    data = json.loads(output)
+    duration = data.get("format", {}).get("duration")
+    if duration is None:
+        raise ValueError(f"Could not determine duration for {path}")
+    return float(duration)
+
+
+_soxr_available_cache: bool | None = None
+
+
+def soxr_available() -> bool:
+    """True when this ffmpeg build has the soxr resampler compiled in."""
+    global _soxr_available_cache
+    if _soxr_available_cache is None:
+        try:
+            version = run_capture(["ffmpeg", "-hide_banner", "-version"])
+            _soxr_available_cache = "--enable-libsoxr" in version
+        except Exception:
+            # ffmpeg missing or an unexpected build: fall back to the default resampler.
+            _soxr_available_cache = False
+    return _soxr_available_cache
+
+
 def probe_audio(path: Path) -> AudioInfo:
     output = run_capture(
         [
@@ -107,8 +143,9 @@ def convert_album_to_48k(workspace: Path, tracker: ProgressTracker | None = None
                 f"{target_sample_rate // 1000} kHz / {target_bit_depth}-bit stereo: {src.name}",
             )
 
-        # Use the high-quality soxr resampler (when available) for the actual rate
-        # conversion, and force stereo output.
+        # Use the high-quality soxr resampler when available, otherwise ffmpeg's
+        # default (swr) engine, and force stereo output.
+        resampler = "soxr" if soxr_available() else "swr"
         cmd = [
             "ffmpeg",
             "-y",
@@ -118,7 +155,7 @@ def convert_album_to_48k(workspace: Path, tracker: ProgressTracker | None = None
             "-i",
             str(src),
             "-af",
-            f"aresample=osr={target_sample_rate}:ochl=stereo:resampler=soxr",
+            f"aresample=osr={target_sample_rate}:ochl=stereo:resampler={resampler}",
             "-acodec",
             codec,
             str(dst),
