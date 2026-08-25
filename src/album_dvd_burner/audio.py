@@ -82,12 +82,12 @@ def convert_album_to_48k(workspace: Path, tracker: ProgressTracker | None = None
 
     infos = [probe_audio(path) for path in audio_files]
 
-    # Pick the highest DVD-safe quality present across the album: 96 kHz when any
-    # source is already above 48 kHz, otherwise 48 kHz; 24-bit when any source is
-    # above 16-bit (e.g. 20- or 24-bit), otherwise 16-bit.
+    # Pick the highest DVD-safe sample rate present across the album: 96 kHz when
+    # any source is already above 48 kHz, otherwise 48 kHz. Bit depth is always
+    # 16-bit: mplex's 24-bit LPCM path produces corrupted (white-noise) audio.
     target_sample_rate = 96000 if any(info.sample_rate > 48000 for info in infos) else 48000
-    target_bit_depth = 24 if any(info.bit_depth > 16 for info in infos) else 16
-    codec = "pcm_s24le" if target_bit_depth == 24 else "pcm_s16le"
+    target_bit_depth = 16
+    codec = "pcm_s16le"
 
     # Skip conversion only when every track is already homogeneous DVD-safe stereo.
     if all(
@@ -144,7 +144,8 @@ def convert_album_to_48k(workspace: Path, tracker: ProgressTracker | None = None
             )
 
         # Use the high-quality soxr resampler when available, otherwise ffmpeg's
-        # default (swr) engine, and force stereo output.
+        # default (swr) engine. The filter also forces stereo and dithers down to
+        # 16-bit when the source is higher precision.
         resampler = "soxr" if soxr_available() else "swr"
         cmd = [
             "ffmpeg",
@@ -155,7 +156,10 @@ def convert_album_to_48k(workspace: Path, tracker: ProgressTracker | None = None
             "-i",
             str(src),
             "-af",
-            f"aresample=osr={target_sample_rate}:ochl=stereo:resampler={resampler}",
+            (
+                f"aresample=osr={target_sample_rate}:ochl=stereo"
+                f":resampler={resampler}:osf=s16:dither_method=triangular_hp"
+            ),
             "-acodec",
             codec,
             str(dst),

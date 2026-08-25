@@ -10,7 +10,7 @@ def _make_workspace(tmp_path: Path) -> tuple[Path, Path]:
     return workspace, source
 
 
-def test_mixed_bit_depths_are_normalized_to_highest(monkeypatch, tmp_path):
+def test_mixed_bit_depths_are_normalized_to_16bit(monkeypatch, tmp_path):
     workspace, source = _make_workspace(tmp_path)
     track1 = source / "01.flac"
     track2 = source / "02.flac"
@@ -34,7 +34,8 @@ def test_mixed_bit_depths_are_normalized_to_highest(monkeypatch, tmp_path):
         af = command[command.index("-af") + 1]
         assert "osr=48000" in af
         assert "ochl=stereo" in af
-        assert command[command.index("-acodec") + 1] == "pcm_s24le"
+        assert "osf=s16" in af
+        assert command[command.index("-acodec") + 1] == "pcm_s16le"
 
 
 def test_homogeneous_dvd_safe_album_skips_conversion(monkeypatch, tmp_path):
@@ -45,7 +46,7 @@ def test_homogeneous_dvd_safe_album_skips_conversion(monkeypatch, tmp_path):
     monkeypatch.setattr("album_dvd_burner.audio.list_audio_files", lambda *a, **k: files)
     monkeypatch.setattr(
         "album_dvd_burner.audio.probe_audio",
-        lambda path: AudioInfo(48000, 24, 2, "flac"),
+        lambda path: AudioInfo(48000, 16, 2, "flac"),
     )
     monkeypatch.setattr("album_dvd_burner.audio.run", lambda cmd, **k: commands.append(cmd))
 
@@ -89,7 +90,7 @@ def test_existing_matching_conversion_is_reused(monkeypatch, tmp_path):
 
     def fake_probe(path):
         if path == cached:
-            return AudioInfo(48000, 24, 2, "pcm_s24le")
+            return AudioInfo(48000, 16, 2, "pcm_s16le")
         return AudioInfo(44100, 24, 2, "flac")
 
     commands: list[list[str]] = []
@@ -104,7 +105,7 @@ def test_existing_matching_conversion_is_reused(monkeypatch, tmp_path):
     assert commands[0][commands[0].index("-i") + 1] == str(track2)
 
 
-def test_twenty_bit_source_targets_24bit(monkeypatch, tmp_path):
+def test_twenty_bit_source_targets_16bit_96k(monkeypatch, tmp_path):
     workspace, source = _make_workspace(tmp_path)
     files = [source / "01.flac"]
 
@@ -121,5 +122,5 @@ def test_twenty_bit_source_targets_24bit(monkeypatch, tmp_path):
     assert result == workspace / "16-48"
     assert len(commands) == 1
     command = commands[0]
-    assert command[command.index("-acodec") + 1] == "pcm_s24le"
+    assert command[command.index("-acodec") + 1] == "pcm_s16le"
     assert "osr=96000" in command[command.index("-af") + 1]

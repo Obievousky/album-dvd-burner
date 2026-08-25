@@ -5,14 +5,16 @@ import pytest
 from album_dvd_burner.audio import AudioInfo
 from album_dvd_burner.dvd_author import (
     AlbumTitle,
+    _build_dvdauthor_xml,
     _create_track_vob,
     _encode_vob_task,
     author_dvd,
+    detect_display_aspect,
     prepare_album,
 )
 
 
-def test_vob_uses_mplex_and_preserves_24bit_96k_audio(monkeypatch, tmp_path):
+def test_vob_uses_mplex_and_downconverts_24bit_to_16bit_96k(monkeypatch, tmp_path):
     commands: list[list[str]] = []
     monkeypatch.setattr(
         "album_dvd_burner.dvd_author.probe_duration",
@@ -40,16 +42,17 @@ def test_vob_uses_mplex_and_preserves_24bit_96k_audio(monkeypatch, tmp_path):
     assert video_cmd[video_cmd.index("-r") + 1] == "30000/1001"
     assert video_cmd[video_cmd.index("-g") + 1] == "18"
 
-    # Audio is emitted as raw big-endian 24-bit PCM at 96 kHz.
+    # Audio is emitted as raw big-endian 16-bit PCM at 96 kHz. 24-bit sources are
+    # downconverted because mplex's 24-bit LPCM path corrupts the audio.
     assert audio_cmd[0] == "ffmpeg"
-    assert audio_cmd[audio_cmd.index("-c:a") + 1] == "pcm_s24be"
-    assert audio_cmd[audio_cmd.index("-f") + 1] == "s24be"
+    assert audio_cmd[audio_cmd.index("-c:a") + 1] == "pcm_s16be"
+    assert audio_cmd[audio_cmd.index("-f") + 1] == "s16be"
     assert audio_cmd[audio_cmd.index("-ar") + 1] == "96000"
 
-    # Streams are multiplexed with mplex in DVD format, preserving LPCM quality.
+    # Streams are multiplexed with mplex in DVD format as 16-bit LPCM.
     assert mplex_cmd[0] == "mplex"
     assert mplex_cmd[mplex_cmd.index("-f") + 1] == "8"
-    assert mplex_cmd[mplex_cmd.index("-L") + 1] == "96000:2:24"
+    assert mplex_cmd[mplex_cmd.index("-L") + 1] == "96000:2:16"
     assert mplex_cmd[-2].endswith(".m2v")
     assert mplex_cmd[-1].endswith(".lpcm")
 
@@ -101,8 +104,8 @@ def test_encode_vob_uses_placeholder_when_no_artwork(monkeypatch, tmp_path):
     captured: dict = {}
     monkeypatch.setattr(
         "album_dvd_burner.dvd_author._create_track_vob",
-        lambda track, artwork, vob_path, standard=None, album_audio_info=None: captured.update(
-            track=track, artwork=artwork, vob_path=vob_path
+        lambda track, artwork, vob_path, standard=None, album_audio_info=None, display_aspect="4:3": captured.update(
+            track=track, artwork=artwork, vob_path=vob_path, display_aspect=display_aspect
         ),
     )
     track = tmp_path / "01.wav"
@@ -120,3 +123,63 @@ def test_encode_vob_uses_placeholder_when_no_artwork(monkeypatch, tmp_path):
 
     assert captured["artwork"] == placeholder
     assert captured["track"] == track
+    assert captured["display_aspect"] == "4:3"
+
+
+def test_pal_4_3_vob_uses_correct_sample_aspect(monkeypatch, tmp_path):
+    commands: list[list[str]] = []
+    monkeypatch.setattr(
+        "album_dvd_burner.dvd_author.probe_duration",
+        lambda path: 180.0,
+    )
+    monkeypatch.setattr(
+        "album_dvd_burner.dvd_author.run",
+        lambda cmd, **k: commands.append(cmd),
+    )
+
+    _create_track_vob(
+        tmp_path / "track.wav",
+        tmp_path / "cover.jpg",
+        tmp_path / "track.vob",
+        standard="pal",
+        album_audio_info=AudioInfo(48000, 16, 2, "wav"),
+        display_aspect="4:3",
+    )
+
+    video_cmd = commands[0]
+    vf = video_cmd[video_cmd.index("-vf") + 1]
+    assert "setsar=16/15" in vf
+
+
+def test_detect_display_aspect(tmp_path):
+    try:
+        from PIL import Image
+    except ImportError:
+        pytest.skip("PIL not available")
+
+    wide = tmp_path / "wide.jpg"
+    Image.new("RGB", (1600, 900)).save(wide)
+    square = tmp_path / "square.jpg"
+    Image.new("RGB", (1000, 1000)).save(square)
+
+    assert detect_display_aspect(None) == "4:3"
+    assert detect_display_aspect(wide) == "16:9"
+    assert detect_display_aspect(square) == "4:3"
+
+
+def test_dvdauthor_xml_uses_album_display_aspect(tmp_path):
+    track = tmp_path / "01.wav"
+    album = AlbumTitle(
+        name="Wide",
+        source_folder=tmp_path,
+        work_dir=tmp_path,
+        tracks=[track],
+        artwork=None,
+        audio_info=AudioInfo(48000, 16, 2, "wav"),
+        display_aspect="16:9",
+    )
+
+    xml = _build_dvdauthor_xml([album], {track: "title01_track01.vob"}, "ntsc")
+
+    assert 'aspect="16:9"' in xml
+    assert 'file="title01_track01.vob"' in xml

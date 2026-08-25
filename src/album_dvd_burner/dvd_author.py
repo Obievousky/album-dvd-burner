@@ -19,6 +19,24 @@ class AlbumTitle:
     tracks: list[Path]
     artwork: Path | None
     audio_info: AudioInfo
+    display_aspect: str = "4:3"
+
+
+def detect_display_aspect(artwork: Path | None) -> str:
+    """Return '4:3' or '16:9' based on the cover image's aspect ratio."""
+    if artwork is None:
+        return "4:3"
+    try:
+        from PIL import Image
+
+        with Image.open(artwork) as img:
+            w, h = img.size
+            ratio = float(w) / float(h) if h else 0.0
+            # Threshold halfway between 4:3 (~1.333) and 16:9 (~1.777).
+            threshold = (4.0 / 3.0 + 16.0 / 9.0) / 2.0
+            return "16:9" if ratio >= threshold else "4:3"
+    except Exception:
+        return "4:3"
 
 
 def prepare_album(workspace: Path, tracker: ProgressTracker | None = None) -> AlbumTitle:
@@ -48,6 +66,7 @@ def prepare_album(workspace: Path, tracker: ProgressTracker | None = None) -> Al
         tracks=tracks,
         artwork=artwork,
         audio_info=info,
+        display_aspect=detect_display_aspect(artwork),
     )
 
 
@@ -58,11 +77,12 @@ def _create_track_vob(
     *,
     standard: str,
     album_audio_info: AudioInfo | None = None,
+    display_aspect: str = "4:3",
 ) -> None:
     """Create a VOB for a single track.
 
-    Preserve highest reasonable audio quality: if the album audio is 24-bit (or higher)
-    encode audio as 24-bit DVD PCM; otherwise use 16-bit.
+    Always encode audio as 16-bit LPCM. mplex's 24-bit LPCM path produces
+    corrupted (white-noise) audio, whereas 16-bit LPCM multiplexes losslessly.
 
     The still image is encoded to a DVD-compliant MPEG-2 elementary stream and then
     multiplexed with raw LPCM audio using mplex (DVD format). mplex produces VOBs that
@@ -74,29 +94,13 @@ def _create_track_vob(
     if standard not in {"ntsc", "pal"}:
         raise ValueError("DVD standard must be 'ntsc' or 'pal'")
 
-    # Keep the highest DVD-safe audio quality available: 96 kHz whenever the source is
-    # above 48 kHz, otherwise 48 kHz, while preserving 24-bit PCM when present.
+    # Keep the highest DVD-safe sample rate: 96 kHz whenever the source is above
+    # 48 kHz, otherwise 48 kHz. Audio is always encoded as 16-bit LPCM because
+    # mplex's 24-bit LPCM path produces corrupted (white-noise) audio.
     target_samplerate = 48000
     target_bits = 16
     if album_audio_info is not None:
         target_samplerate = 96000 if album_audio_info.sample_rate > 48000 else 48000
-        target_bits = 24 if album_audio_info.bit_depth >= 24 else 16
-
-    # Determine display aspect from artwork dimensions to avoid dvdauthor warnings.
-    # Auto-detect between 4:3 and 16:9 based on artwork aspect ratio; fallback to 4:3.
-    display_aspect = "4:3"
-    try:
-        from PIL import Image
-
-        with Image.open(artwork) as img:
-            w, h = img.size
-            ratio = float(w) / float(h) if h else 0.0
-            # Choose threshold halfway between 4:3 (~1.333) and 16:9 (~1.777)
-            threshold = (4.0 / 3.0 + 16.0 / 9.0) / 2.0  # ~1.555
-            display_aspect = "16:9" if ratio >= threshold else "4:3"
-    except Exception:
-        # If PIL is not available or reading fails, default to 4:3
-        display_aspect = "4:3"
 
     if standard == "ntsc":
         # NTSC DVD resolution is 720x480 at 30000/1001 fps
@@ -109,7 +113,7 @@ def _create_track_vob(
         width, height = 720, 576
         fps = "25"
         gop = 15
-        sar = "8/7" if display_aspect == "4:3" else "64/45"
+        sar = "16/15" if display_aspect == "4:3" else "64/45"
 
     m2v_path = vob_path.with_suffix(".m2v")
     lpcm_path = vob_path.with_suffix(".lpcm")
@@ -154,9 +158,9 @@ def _create_track_vob(
         ]
     )
 
-    # 2) Encode audio to raw big-endian PCM for mplex LPCM multiplexing.
-    pcm_codec = "pcm_s16be" if target_bits == 16 else "pcm_s24be"
-    pcm_format = "s16be" if target_bits == 16 else "s24be"
+    # 2) Encode audio to raw 16-bit big-endian PCM for mplex LPCM multiplexing.
+    pcm_codec = "pcm_s16be"
+    pcm_format = "s16be"
     run(
         [
             "ffmpeg",
@@ -204,7 +208,7 @@ def _build_dvdauthor_xml(albums: list[AlbumTitle], vob_map: dict[Path, str], sta
     for album in albums:
         titleset = ET.SubElement(root, "titleset")
         titles = ET.SubElement(titleset, "titles")
-        ET.SubElement(titles, "video", format=standard, aspect="4:3")
+        ET.SubElement(titles, "video", format=standard, aspect=album.display_aspect)
         pgc = ET.SubElement(titles, "pgc")
         for track in album.tracks:
             ET.SubElement(pgc, "vob", file=vob_map[track])
@@ -224,7 +228,14 @@ def _encode_vob_task(
     vob_name = f"title{album_index:02d}_track{track_index:02d}.vob"
     vob_path = work_root / vob_name
     artwork = album.artwork if album.artwork is not None else placeholder_artwork
-    _create_track_vob(track, artwork, vob_path, standard=standard, album_audio_info=album.audio_info)
+    _create_track_vob(
+        track,
+        artwork,
+        vob_path,
+        standard=standard,
+        album_audio_info=album.audio_info,
+        display_aspect=album.display_aspect,
+    )
     return track, vob_name
 
 
