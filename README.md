@@ -1,3 +1,5 @@
+# AI Slop which doesn't work btw
+
 # Album DVD Burner
 
 Dockerized pipeline that turns album folders into **Lplex-style audio DVDs**, logs burns to PostgreSQL, and optionally burns discs. Includes a **web UI** with per-album workspaces and configurable file retention.
